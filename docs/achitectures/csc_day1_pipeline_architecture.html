@@ -1,0 +1,237 @@
+<h2 class="sr-only">Chief Signal Cat Day 1 pipeline architecture — 8 modules from scheduler to email output, with data schemas at each stage</h2>
+<style>
+  .stage { display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:var(--border-radius-lg); border:0.5px solid var(--color-border-tertiary); background:var(--color-background-primary); cursor:pointer; transition:border-color .2s, background .15s; }
+  .stage:hover { border-color:var(--color-border-secondary); background:var(--color-background-secondary); }
+  .stage.active { border-color:var(--color-border-info); border-width:1.5px; }
+  .stage-num { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:500; font-size:13px; flex-shrink:0; }
+  .stage-info h3 { font-size:14px; font-weight:500; margin:0; color:var(--color-text-primary); }
+  .stage-info p { font-size:12px; margin:2px 0 0; color:var(--color-text-secondary); }
+  .arrow-down { text-align:center; color:var(--color-text-tertiary); font-size:16px; line-height:1; padding:4px 0; }
+  .detail-panel { margin-top:20px; padding:16px 20px; border-radius:var(--border-radius-lg); border:0.5px solid var(--color-border-tertiary); background:var(--color-background-secondary); display:none; }
+  .detail-panel.visible { display:block; }
+  .detail-panel h4 { font-size:14px; font-weight:500; margin:0 0 8px; color:var(--color-text-primary); }
+  .detail-panel p, .detail-panel li { font-size:13px; color:var(--color-text-secondary); line-height:1.6; margin:0; }
+  .detail-panel ul { margin:6px 0; padding-left:18px; }
+  .schema-badge { display:inline-block; font-size:11px; font-family:var(--font-mono); padding:2px 8px; border-radius:var(--border-radius-md); margin:4px 4px 4px 0; }
+  .schema-in { background:var(--color-background-info); color:var(--color-text-info); }
+  .schema-out { background:var(--color-background-success); color:var(--color-text-success); }
+  .tag-det { background:var(--color-background-warning); color:var(--color-text-warning); font-size:11px; padding:2px 8px; border-radius:var(--border-radius-md); display:inline-block; margin-left:6px; }
+  .tag-llm { background:var(--color-background-info); color:var(--color-text-info); font-size:11px; padding:2px 8px; border-radius:var(--border-radius-md); display:inline-block; margin-left:6px; }
+  .rule-box { margin-top:10px; padding:10px 14px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-tertiary); background:var(--color-background-primary); }
+  .rule-box p { font-size:12px; color:var(--color-text-secondary); margin:0; }
+  .rule-box strong { color:var(--color-text-primary); font-weight:500; }
+  .prompt-btn { margin-top:12px; padding:6px 14px; font-size:12px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); background:transparent; color:var(--color-text-secondary); cursor:pointer; transition:background .15s; }
+  .prompt-btn:hover { background:var(--color-background-secondary); }
+  .section-label { font-size:11px; font-weight:500; color:var(--color-text-tertiary); text-transform:uppercase; letter-spacing:0.5px; margin:16px 0 8px; }
+</style>
+
+<div style="padding:0.5rem 0;">
+  <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+    <span style="font-size:11px; font-weight:500; color:var(--color-text-tertiary); text-transform:uppercase; letter-spacing:0.5px;">Click any module to explore</span>
+  </div>
+
+  <div id="pipeline">
+    <div class="stage" onclick="show(0)" id="s0">
+      <div class="stage-num" style="background:var(--color-background-warning); color:var(--color-text-warning);">1</div>
+      <div class="stage-info"><h3>Scheduler <span class="tag-det">deterministic</span></h3><p>Triggers the pipeline on a cadence</p></div>
+    </div>
+    <div class="arrow-down"><i class="ti ti-arrow-down" aria-hidden="true"></i></div>
+
+    <div class="stage" onclick="show(1)" id="s1">
+      <div class="stage-num" style="background:var(--color-background-warning); color:var(--color-text-warning);">2</div>
+      <div class="stage-info"><h3>Source connector <span class="tag-det">deterministic</span></h3><p>Fetches raw content from external sources</p></div>
+    </div>
+    <div class="arrow-down"><i class="ti ti-arrow-down" aria-hidden="true"></i></div>
+
+    <div class="stage" onclick="show(2)" id="s2">
+      <div class="stage-num" style="background:var(--color-background-warning); color:var(--color-text-warning);">3</div>
+      <div class="stage-info"><h3>Filter rules <span class="tag-det">deterministic</span></h3><p>Removes noise before LLM costs</p></div>
+    </div>
+    <div class="arrow-down"><i class="ti ti-arrow-down" aria-hidden="true"></i></div>
+
+    <div class="stage" onclick="show(3)" id="s3">
+      <div class="stage-num" style="background:var(--color-background-warning); color:var(--color-text-warning);">4</div>
+      <div class="stage-info"><h3>Deduplicate <span class="tag-det">deterministic</span></h3><p>Merges repeated stories</p></div>
+    </div>
+    <div class="arrow-down"><i class="ti ti-arrow-down" aria-hidden="true"></i></div>
+
+    <div class="stage" onclick="show(4)" id="s4">
+      <div class="stage-num" style="background:var(--color-background-info); color:var(--color-text-info);">5</div>
+      <div class="stage-info"><h3>LLM classifier <span class="tag-llm">LLM-powered</span></h3><p>Classifies items into structured signals</p></div>
+    </div>
+    <div class="arrow-down"><i class="ti ti-arrow-down" aria-hidden="true"></i></div>
+
+    <div class="stage" onclick="show(5)" id="s5">
+      <div class="stage-num" style="background:var(--color-background-warning); color:var(--color-text-warning);">6</div>
+      <div class="stage-info"><h3>Signal scorer <span class="tag-det">deterministic</span></h3><p>Ranks strategic importance</p></div>
+    </div>
+    <div class="arrow-down"><i class="ti ti-arrow-down" aria-hidden="true"></i></div>
+
+    <div class="stage" onclick="show(6)" id="s6">
+      <div class="stage-num" style="background:var(--color-background-info); color:var(--color-text-info);">7</div>
+      <div class="stage-info"><h3>LLM summariser <span class="tag-llm">LLM-powered</span></h3><p>Produces the decision-ready brief</p></div>
+    </div>
+    <div class="arrow-down"><i class="ti ti-arrow-down" aria-hidden="true"></i></div>
+
+    <div class="stage" onclick="show(7)" id="s7">
+      <div class="stage-num" style="background:var(--color-background-warning); color:var(--color-text-warning);">8</div>
+      <div class="stage-info"><h3>Email output <span class="tag-det">deterministic</span></h3><p>Delivers the brief via email</p></div>
+    </div>
+  </div>
+
+  <div class="detail-panel" id="detail"></div>
+</div>
+
+<script>
+const modules = [
+  {
+    title: "Scheduler",
+    schemas: { in: "Cron trigger / config", out: "Pipeline invocation" },
+    what: "Triggers the full pipeline run on a set cadence — daily at 7am, or every 3 days for the synthesis window.",
+    rules: [
+      "Keep it dumb — no business logic, no conditional skipping",
+      "Use cron or APScheduler, not custom timing code",
+      "Log every trigger: timestamp, run ID, status",
+      "On failure, retry once then alert — don't silently skip a run"
+    ],
+    day2: "In Day 2, the scheduler becomes part of the LangGraph orchestrator which manages state across all agents.",
+    prompt: "Tell me more about how the scheduler should handle failures and retries"
+  },
+  {
+    title: "Source connector",
+    schemas: { in: "Source config (URLs, API keys)", out: "list[RawItem]" },
+    what: "Fetches raw content from one or two external sources. Day 1 scope: one region (AU), one source type (news RSS or API). Returns standardised RawItem objects.",
+    rules: [
+      "Return typed RawItem for every item — never raw dicts",
+      "Handle retries with exponential backoff (3 attempts max)",
+      "Log failed sources with error type and timestamp",
+      "Store raw_metadata for anything source-specific you might need later",
+      "Generate stable IDs from canonical URL hash"
+    ],
+    day2: "Becomes the Intake agent — fetches from multiple sources in parallel, handles source failure gracefully, normalises metadata across formats.",
+    prompt: "What sources should we start with for the Australian car and consumer finance market?"
+  },
+  {
+    title: "Filter rules",
+    schemas: { in: "list[RawItem]", out: "list[FilteredItem]" },
+    what: "Removes obvious noise using deterministic rules before any LLM calls. This is where you save token costs — aggressive but transparent filtering.",
+    rules: [
+      "No LLM calls — pure Python logic only",
+      "Apply in order: region check → recency check → domain allowlist → keyword blocklist",
+      "Every dropped item gets a filter_reason code (e.g. 'stale', 'blocked_domain', 'off_region')",
+      "Log all drops to the append-only signal log",
+      "Keep filter config in a YAML/JSON file, not hardcoded"
+    ],
+    day2: "Merges with deduplicate into the Normalisation/enrichment agent which also adds entity extraction and source credibility checks.",
+    prompt: "Help me define the initial filter rules — keyword blocklists and domain allowlists for AU car finance"
+  },
+  {
+    title: "Deduplicate",
+    schemas: { in: "list[FilteredItem]", out: "list[FilteredItem] (deduplicated)" },
+    what: "Removes near-duplicate stories so the classifier doesn't waste tokens on the same news reported by multiple outlets.",
+    rules: [
+      "First pass: exact URL match (canonical_url or url)",
+      "Second pass: fuzzy title match using difflib or rapidfuzz (threshold: 0.85)",
+      "When merging, keep the item with the earliest published_at",
+      "Log which items were merged and why",
+      "Don't deduplicate across different regions or source types — same story from AU news vs US news may have different implications"
+    ],
+    day2: "Part of the Normalisation/enrichment agent. Gains cross-source merging and entity-based deduplication.",
+    prompt: "Walk me through how fuzzy deduplication should work with example titles"
+  },
+  {
+    title: "LLM classifier",
+    schemas: { in: "list[FilteredItem]", out: "list[ClassifiedItem]" },
+    what: "The first LLM step. Takes each filtered item and returns structured classification: domain, signal type, relevance/novelty/impact/urgency scores, confidence, tags, rationale, and human review flags.",
+    rules: [
+      "One item per LLM call — don't batch (keeps output reliable and debuggable)",
+      "Use Claude Sonnet for cost/speed balance",
+      "Validate JSON output — if parsing fails, retry once then mark as classification_failed",
+      "Confidence is the LLM's self-assessment, not truth — never treat it as verification",
+      "Flag for human review when: regulatory implications, single weak source, low confidence, contradictory evidence, or major inference needed",
+      "Store both evidence_quote and inference_note so downstream consumers know what's fact vs interpretation"
+    ],
+    day2: "Becomes the Verification agent — cross-checks sources, detects contradictions, and routes low-confidence items to human review.",
+    prompt: "Show me the full classifier prompt and expected JSON output"
+  },
+  {
+    title: "Signal scorer",
+    schemas: { in: "list[ClassifiedItem]", out: "list[ScoredItem]" },
+    what: "Applies a rule-based scoring formula to rank classified items by strategic importance. No LLM here — the formula is transparent and adjustable.",
+    rules: [
+      "Formula: 0.30×relevance + 0.25×impact + 0.20×urgency + 0.15×novelty + 0.10×source_weight − confidence_penalty",
+      "Keep weights in config — not hardcoded in module logic",
+      "source_weight is assigned per source in config (e.g. regulator=1.0, major news=0.8, blog=0.4)",
+      "confidence_penalty = max(0, 0.3 − confidence) × 0.5 — penalises very low confidence items",
+      "Store full score_breakdown dict for auditability",
+      "Rank items by strategic_score descending"
+    ],
+    day2: "Becomes the Strategic implication agent — converts scored signals into actionable implications, hypotheses, and watch items.",
+    prompt: "Help me tune the scoring weights for our car and consumer finance context"
+  },
+  {
+    title: "LLM summariser",
+    schemas: { in: "Top N ScoredItems", out: "Markdown brief" },
+    what: "Takes the top-ranked scored items and writes a decision-ready intelligence brief. This is what stakeholders actually read.",
+    rules: [
+      "Use the standard brief template: one-line readout → top signals → watch item → human review flags",
+      "Every claim must trace back to a source — include source name, date, URL",
+      "Separate facts from implications explicitly",
+      "Don't remove uncertainty to make the brief sound cleaner",
+      "Keep to top 3-5 signals — more than that and nobody reads it",
+      "Include the human_review_flag items in a clearly marked section"
+    ],
+    day2: "Part of the Presentation agent — routes the same intelligence to email, dashboard, Slack, or API depending on audience and urgency.",
+    prompt: "Show me the full summariser prompt and an example brief output"
+  },
+  {
+    title: "Email output",
+    schemas: { in: "Markdown brief + config", out: "Sent email" },
+    what: "Delivers the brief to the configured recipients. Day 1: plain text email. HTML optional as a fast-follow.",
+    rules: [
+      "Plain text first — it works everywhere and is easy to debug",
+      "Include source links as full URLs (not hyperlinks) for plain text",
+      "Add a footer: run timestamp, run ID, number of items processed/filtered/classified",
+      "SMTP or SendGrid — keep provider config external",
+      "Log: sent timestamp, recipients, subject line, delivery status"
+    ],
+    day2: "Becomes part of the Presentation agent — adds Slack, dashboard views, and API endpoints alongside email.",
+    prompt: "What should the email subject line format be for the daily brief?"
+  }
+];
+
+let activeIdx = -1;
+
+function show(idx) {
+  document.querySelectorAll('.stage').forEach((s,i) => s.classList.toggle('active', i===idx));
+  const m = modules[idx];
+  const panel = document.getElementById('detail');
+  
+  if (activeIdx === idx) {
+    panel.classList.remove('visible');
+    document.querySelectorAll('.stage').forEach(s => s.classList.remove('active'));
+    activeIdx = -1;
+    return;
+  }
+  activeIdx = idx;
+
+  panel.innerHTML = `
+    <h4>${m.title}</h4>
+    <div style="margin-bottom:10px;">
+      <span class="schema-badge schema-in">IN: ${m.schemas.in}</span>
+      <span class="schema-badge schema-out">OUT: ${m.schemas.out}</span>
+    </div>
+    <p>${m.what}</p>
+    <div class="section-label" style="margin-top:14px">Architecture rules</div>
+    <ul>${m.rules.map(r => `<li>${r}</li>`).join('')}</ul>
+    <div class="rule-box">
+      <p><strong>Day 2 upgrade path:</strong> ${m.day2}</p>
+    </div>
+    <button class="prompt-btn" onclick="sendPrompt('${m.prompt}')">
+      ${m.prompt} ↗
+    </button>
+  `;
+  panel.classList.add('visible');
+  panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+</script>

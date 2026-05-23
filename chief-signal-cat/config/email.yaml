@@ -1,0 +1,24 @@
+email:
+  provider: "smtp"  # or "sendgrid"
+  smtp_host: ""
+  smtp_port: 587
+  from_address: "signal-cat@example.com"
+  recipients:
+    - "product-team@example.com"
+  alert_address: "alerts@example.com"
+
+pipeline:
+  synthesis_window_days: 3
+  schedule_cron: "0 7 * * *"
+
+classifier:
+  model: "claude-sonnet-4-20250514"
+  max_body_chars: 2000
+  confidence_floor: 0.5
+  max_retries: 1
+
+summariser:
+  model: "claude-sonnet-4-20250514"
+  top_n: 5
+  audience: "product, design, and consumer finance stakeholders"
+  max_output_tokens: 2000

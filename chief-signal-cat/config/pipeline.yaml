@@ -1,0 +1,74 @@
+pipeline:
+  synthesis_window_days: 3
+  schedule_cron: "0 7 * * *"   # 07:00 UTC daily
+
+
+filter:
+  target_regions:
+    - "AU"
+  max_age_days: 7
+  domain_allowlist: []          # empty = allow all domains
+  require_keyword_match: true
+  min_keyword_matches: 1
+  keyword_match_exempt_tiers:
+    - "official"
+  missing_published_at_policy:
+    official: "keep_with_warning"
+    regulator: "keep_with_warning"
+    news: "drop"
+    aggregator: "drop"
+    social: "drop"
+    manual: "keep_with_warning"
+  keyword_blocklist:
+    - "sponsored content"
+    - "press release template"
+    - "advertorial"
+  keyword_allowlist:
+    - "car loan"
+    - "vehicle finance"
+    - "BNPL"
+    - "consumer credit"
+    - "auto lending"
+    - "ASIC"
+    - "ACCC"
+    - "responsible lending"
+    - "car finance"
+    - "motor vehicle"
+    - "electric vehicle"
+    - "EV"
+    - "buy now pay later"
+    - "fleet"
+    - "novated lease"
+    - "dealer finance"
+    - "interest rate"
+    - "credit regulation"
+
+
+deduplicate:
+  fuzzy_threshold: 0.85         # SequenceMatcher ratio; rapidfuzz upgrade if volume grows
+  dedup_across_regions: false
+
+
+classification:
+  model: "claude-sonnet-4-6"
+  max_body_chars: 2000
+  confidence_floor: 0.5
+  max_retries: 1
+
+
+scoring:
+  weights:
+    relevance: 0.30
+    impact: 0.25
+    urgency: 0.20
+    novelty: 0.15
+    source_weight: 0.10
+  confidence_penalty_threshold: 0.7   # aligned with human_review_flag threshold
+  confidence_penalty_factor: 0.25     # penalty = max(0, threshold - confidence) * factor
+
+
+summary:
+  model: "claude-sonnet-4-6"
+  top_n: 5
+  audience: "product, design, and consumer finance stakeholders"
+  max_output_tokens: 2000
