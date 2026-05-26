@@ -8,14 +8,12 @@ logger = get_logger(__name__)
 
 def score_items(items: list[ClassifiedItem], cfg: dict) -> list[ScoredItem]:
     weights = cfg.get("weights", {})
-    source_weights = cfg.get("source_weights", {})
-    penalty_threshold = cfg.get("confidence_penalty_threshold", 0.3)
-    penalty_factor = cfg.get("confidence_penalty_factor", 0.5)
-    default_source_weight = source_weights.get("default", 0.5)
+    penalty_threshold = cfg.get("confidence_penalty_threshold", 0.7)
+    penalty_factor = cfg.get("confidence_penalty_factor", 0.25)
 
     scored = []
     for item in items:
-        sw = source_weights.get(item.source_name, default_source_weight)
+        sw = item.source_weight
         penalty = max(0, penalty_threshold - item.confidence) * penalty_factor
         score = (
             weights.get("relevance", 0.30) * item.relevance_score

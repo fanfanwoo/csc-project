@@ -8,7 +8,7 @@ Fetches → Filters → Deduplicates → Classifies (LLM) → Scores → Summari
 
 ```bash
 cp .env.example .env
-# fill in ANTHROPIC_API_KEY and SMTP_* vars
+# fill in GEMINI_API_KEY and SMTP_* vars
 
 pip install -r requirements.txt
 python -m csc.run          # single pipeline run
@@ -20,9 +20,8 @@ python -m csc.pipeline.scheduler   # start cron scheduler
 | File | Controls |
 |---|---|
 | `config/sources.yaml` | Source feeds and weights |
-| `config/filters.yaml` | Region, age, keyword rules |
-| `config/scoring.yaml` | Score weights, dedup threshold |
-| `config/email.yaml` | SMTP/SendGrid, recipients, LLM model config |
+| `config/pipeline.yaml` | Filter rules, dedup, classification, scoring, summary |
+| `config/email.yaml` | SMTP/SendGrid, recipients |
 
 ## Structure
 

@@ -16,9 +16,7 @@ JSON schema:
   "tags": ["<tag>", ...],
   "rationale": "<one sentence explaining the classification>",
   "evidence_quote": "<short direct quote or paraphrase from the source, or null>",
-  "inference_note": "<what you inferred beyond source facts, or null>",
-  "human_review_flag": <true|false>,
-  "human_review_reason": "<reason if flagged, otherwise null>"
+  "inference_note": "<what you inferred beyond source facts, or null>"
 }
 
 Scoring guidance:

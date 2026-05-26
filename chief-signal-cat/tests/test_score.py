@@ -1,23 +1,24 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from csc.pipeline.score import score_items
 from csc.schemas.items import ClassifiedItem
 
 NOW = datetime.now(timezone.utc)
 CFG = {
     "weights": {"relevance": 0.30, "impact": 0.25, "urgency": 0.20, "novelty": 0.15, "source_weight": 0.10},
-    "confidence_penalty_threshold": 0.3,
-    "confidence_penalty_factor": 0.5,
-    "source_weights": {"ASIC Media": 1.0, "default": 0.5},
+    "confidence_penalty_threshold": 0.7,
+    "confidence_penalty_factor": 0.25,
 }
 
 
-def _classified(id_, source_name="ASIC Media", confidence=0.9, **scores) -> ClassifiedItem:
+def _classified(id_, source_name="ASIC Media", confidence=0.9, source_weight=0.5, **scores) -> ClassifiedItem:
     defaults = dict(relevance_score=0.8, impact_score=0.7, urgency_score=0.6, novelty_score=0.5)
     defaults.update(scores)
     return ClassifiedItem(
         id=id_, url="https://x.com", canonical_url="https://x.com", title="T", body="",
-        source_name=source_name, source_type="news", region="AU",
+        source_name=source_name, source_type="news", source_weight=source_weight, region="AU",
         published_at=NOW, fetched_at=NOW, raw_metadata={},
         domain="policy", signal_type="regulatory_change",
         confidence=confidence, tags=[], rationale="", **defaults,
@@ -49,7 +50,13 @@ def test_confidence_penalty_applied():
     assert high.score_breakdown["confidence_penalty"] == 0
 
 
-def test_unknown_source_uses_default_weight():
-    item = _classified("a", source_name="Unknown Blog")
+def test_source_weight_read_from_item_field():
+    item = _classified("a", source_weight=1.0)
     scored = score_items([item], CFG)
-    assert scored[0].score_breakdown["source_weight"] == CFG["weights"]["source_weight"] * 0.5
+    assert scored[0].score_breakdown["source_weight"] == CFG["weights"]["source_weight"] * 1.0
+
+
+def test_source_weight_low_source():
+    item = _classified("a", source_weight=0.2)
+    scored = score_items([item], CFG)
+    assert scored[0].score_breakdown["source_weight"] == pytest.approx(CFG["weights"]["source_weight"] * 0.2)

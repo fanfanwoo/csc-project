@@ -1,14 +1,17 @@
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from csc.pipeline.classify import classify_items
-from csc.schemas.items import ClassifiedItem, FilteredItem
+import pytest
+
+from csc.pipeline.classify import classify_items, _apply_review_flags
+from csc.schemas.items import ClassificationFailure, ClassifiedItem, FilteredItem
 
 NOW = datetime.now(timezone.utc)
-CFG = {"model": "claude-sonnet-4-20250514", "max_body_chars": 2000, "confidence_floor": 0.5, "max_retries": 1}
+CFG = {"model": "gemini-2.0-flash", "max_body_chars": 2000, "confidence_floor": 0.5, "max_retries": 1}
 
-MOCK_RESPONSE_JSON = {
+MOCK_LLM_RESPONSE = {
     "domain": "policy",
     "signal_type": "regulatory_change",
     "relevance_score": 0.9,
@@ -17,14 +20,14 @@ MOCK_RESPONSE_JSON = {
     "urgency_score": 0.8,
     "confidence": 0.88,
     "tags": ["ASIC", "lending"],
-    "rationale": "ASIC guidance directly affects car finance providers.",
+    "rationale": "New ASIC lending obligations directly affect car finance providers.",
     "evidence_quote": "new guidance on responsible lending",
     "inference_note": None,
 }
 
 
-def _filtered_item() -> FilteredItem:
-    return FilteredItem(
+def _filtered_item(**overrides) -> FilteredItem:
+    base = FilteredItem(
         id="abc",
         url="https://example.com/1",
         canonical_url="https://example.com/1",
@@ -37,45 +40,205 @@ def _filtered_item() -> FilteredItem:
         fetched_at=NOW,
         raw_metadata={},
     )
+    return replace(base, **overrides) if overrides else base
 
 
-def test_classify_returns_classified_item():
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = MagicMock(
-        content=[MagicMock(text=json.dumps(MOCK_RESPONSE_JSON))],
-        usage=MagicMock(input_tokens=100, output_tokens=50),
-    )
-    with patch("csc.pipeline.classify.anthropic.Anthropic", return_value=mock_client):
-        results = classify_items([_filtered_item()], CFG)
+# ── Return shape ──────────────────────────────────────────────
 
-    assert len(results) == 1
-    ci = results[0]
+
+def test_classify_returns_tuple():
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(MOCK_LLM_RESPONSE)):
+        result = classify_items([_filtered_item()], CFG)
+    assert isinstance(result, tuple)
+    classified, failures = result
+    assert isinstance(classified, list)
+    assert isinstance(failures, list)
+
+
+def test_classify_success_path():
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(MOCK_LLM_RESPONSE)):
+        classified, failures = classify_items([_filtered_item()], CFG)
+    assert len(classified) == 1
+    assert len(failures) == 0
+    ci = classified[0]
     assert isinstance(ci, ClassifiedItem)
     assert ci.domain == "policy"
     assert ci.signal_type == "regulatory_change"
     assert 0.0 <= ci.relevance_score <= 1.0
 
 
-def test_classify_sets_review_flag_for_sensitive_domain():
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = MagicMock(
-        content=[MagicMock(text=json.dumps(MOCK_RESPONSE_JSON))],
-        usage=MagicMock(input_tokens=100, output_tokens=50),
+# ── Failure paths ─────────────────────────────────────────────
+
+
+def test_classify_parse_error_returns_failure():
+    with patch("csc.pipeline.classify._call_llm", return_value="not valid json {{"):
+        classified, failures = classify_items([_filtered_item()], CFG)
+    assert len(classified) == 0
+    assert len(failures) == 1
+    assert isinstance(failures[0], ClassificationFailure)
+    assert failures[0].error_type == "json_parse_error"
+    assert failures[0].item_id == "abc"
+
+
+def test_classify_api_error_returns_failure():
+    with patch("csc.pipeline.classify._call_llm", side_effect=Exception("connection timeout")):
+        classified, failures = classify_items([_filtered_item()], CFG)
+    assert len(failures) == 1
+    assert failures[0].error_type == "api_error"
+    assert "connection timeout" in failures[0].error_message
+
+
+def test_classify_schema_validation_error_returns_failure():
+    bad = {**MOCK_LLM_RESPONSE, "domain": "nonexistent_domain"}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(bad)):
+        classified, failures = classify_items([_filtered_item()], CFG)
+    assert len(failures) == 1
+    assert failures[0].error_type == "schema_validation_error"
+    assert "invalid domain" in failures[0].error_message
+
+
+def test_classify_mixed_batch():
+    responses = [json.dumps(MOCK_LLM_RESPONSE), "bad json"]
+    with patch("csc.pipeline.classify._call_llm", side_effect=responses):
+        classified, failures = classify_items(
+            [_filtered_item(id="a", url="https://a.com"), _filtered_item(id="b", url="https://b.com")],
+            CFG,
+        )
+    assert len(classified) == 1
+    assert len(failures) == 1
+
+
+def test_classify_failure_has_model_and_retry_count():
+    with patch("csc.pipeline.classify._call_llm", return_value="bad json"):
+        _, failures = classify_items([_filtered_item()], CFG)
+    f = failures[0]
+    assert f.model == "gemini-2.0-flash"
+    assert f.retry_count == CFG["max_retries"]
+
+
+# ── Retry logic ───────────────────────────────────────────────
+
+
+def test_classify_retries_then_succeeds():
+    responses = [json.JSONDecodeError("err", "", 0), json.dumps(MOCK_LLM_RESPONSE)]
+    with patch("csc.pipeline.classify._call_llm", side_effect=responses):
+        classified, failures = classify_items([_filtered_item()], CFG)
+    assert len(classified) == 1
+    assert len(failures) == 0
+
+
+def test_classify_exhausts_retries_returns_failure():
+    cfg_one_retry = {**CFG, "max_retries": 1}
+    with patch("csc.pipeline.classify._call_llm", return_value="bad json"):
+        _, failures = classify_items([_filtered_item()], cfg_one_retry)
+    assert len(failures) == 1
+    assert failures[0].retry_count == 1
+
+
+# ── Human review flags (applied by code, not LLM) ─────────────
+
+
+def test_review_flag_low_confidence():
+    low_conf = {**MOCK_LLM_RESPONSE, "confidence": 0.3, "impact_score": 0.3}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(low_conf)):
+        classified, _ = classify_items([_filtered_item()], CFG)
+    assert classified[0].human_review_flag is True
+    assert "low_confidence" in classified[0].human_review_reason
+
+
+def test_review_flag_sensitive_domain():
+    # "lending" appears in MOCK_LLM_RESPONSE rationale
+    no_dup = {**MOCK_LLM_RESPONSE, "impact_score": 0.3}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(no_dup)):
+        classified, _ = classify_items([_filtered_item()], CFG)
+    assert classified[0].human_review_flag is True
+    assert "sensitive_domain" in classified[0].human_review_reason
+
+
+def test_review_flag_single_source_high_impact():
+    item = _filtered_item(duplicate_count=0)
+    high_impact = {**MOCK_LLM_RESPONSE, "confidence": 0.9, "impact_score": 0.9, "rationale": "No keywords here."}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(high_impact)):
+        classified, _ = classify_items([item], CFG)
+    assert classified[0].human_review_flag is True
+    assert "single_source_high_impact" in classified[0].human_review_reason
+
+
+def test_no_review_flag_when_clean():
+    item = _filtered_item(duplicate_count=2, duplicate_source_names=["Reuters"])
+    clean = {**MOCK_LLM_RESPONSE, "confidence": 0.9, "impact_score": 0.5, "rationale": "Minor market update."}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(clean)):
+        classified, _ = classify_items([item], CFG)
+    assert classified[0].human_review_flag is False
+
+
+# ── User prompt content ───────────────────────────────────────
+
+
+def test_duplicate_context_in_prompt():
+    item = _filtered_item(
+        duplicate_count=2,
+        duplicate_source_names=["Reuters", "Bloomberg"],
+        dedup_methods=["exact_url"],
     )
-    with patch("csc.pipeline.classify.anthropic.Anthropic", return_value=mock_client):
-        results = classify_items([_filtered_item()], CFG)
+    captured = {}
 
-    assert results[0].human_review_flag is True
+    def capture(sys_p, user_p, model):
+        captured["prompt"] = user_p
+        return json.dumps(MOCK_LLM_RESPONSE)
+
+    with patch("csc.pipeline.classify._call_llm", side_effect=capture):
+        classify_items([item], CFG)
+
+    assert "Count: 2" in captured["prompt"]
+    assert "Reuters" in captured["prompt"]
+    assert "exact_url" in captured["prompt"]
 
 
-def test_classify_handles_parse_failure():
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = MagicMock(
-        content=[MagicMock(text="not valid json {{")],
-        usage=MagicMock(input_tokens=10, output_tokens=5),
-    )
-    with patch("csc.pipeline.classify.anthropic.Anthropic", return_value=mock_client):
-        results = classify_items([_filtered_item()], CFG)
+def test_matched_keywords_in_prompt():
+    item = _filtered_item(matched_keywords=["car loan", "ASIC"])
+    captured = {}
 
-    assert results[0].rationale == "classification_failed"
-    assert results[0].human_review_flag is True
+    def capture(sys_p, user_p, model):
+        captured["prompt"] = user_p
+        return json.dumps(MOCK_LLM_RESPONSE)
+
+    with patch("csc.pipeline.classify._call_llm", side_effect=capture):
+        classify_items([item], CFG)
+
+    assert "car loan" in captured["prompt"]
+    assert "ASIC" in captured["prompt"]
+
+
+def test_single_source_shows_no_duplicates_in_prompt():
+    item = _filtered_item(duplicate_count=0)
+    captured = {}
+
+    def capture(sys_p, user_p, model):
+        captured["prompt"] = user_p
+        return json.dumps(MOCK_LLM_RESPONSE)
+
+    with patch("csc.pipeline.classify._call_llm", side_effect=capture):
+        classify_items([item], CFG)
+
+    assert "single source" in captured["prompt"].lower()
+
+
+# ── Score clamping ────────────────────────────────────────────
+
+
+def test_scores_clamped_to_unit_interval():
+    slightly_over = {**MOCK_LLM_RESPONSE, "relevance_score": 1.03, "impact_score": -0.02}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(slightly_over)):
+        classified, failures = classify_items([_filtered_item()], CFG)
+    assert len(failures) == 0
+    assert classified[0].relevance_score == 1.0
+    assert classified[0].impact_score == 0.0
+
+
+def test_wildly_out_of_range_score_returns_failure():
+    bad_score = {**MOCK_LLM_RESPONSE, "relevance_score": 7.5}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(bad_score)):
+        classified, failures = classify_items([_filtered_item()], CFG)
+    assert len(failures) == 1
+    assert failures[0].error_type == "schema_validation_error"

@@ -37,6 +37,9 @@ def test_send_email_calls_smtp():
 
 
 def test_email_subject_contains_date_and_readout():
+    from email import message_from_string
+    from email.header import decode_header
+
     captured = {}
 
     def fake_sendmail(from_, to, msg_str):
@@ -52,5 +55,11 @@ def test_email_subject_contains_date_and_readout():
         mock_smtp_cls.return_value.__enter__.return_value = mock_smtp_instance
         send_email(BRIEF, CFG)
 
-    assert "2025-05-20" in captured["msg"]
-    assert "[CSC]" in captured["msg"]
+    msg = message_from_string(captured["msg"])
+    parts = decode_header(msg["Subject"])
+    subject = "".join(
+        part.decode(enc or "utf-8") if isinstance(part, bytes) else part
+        for part, enc in parts
+    )
+    assert "2025-05-20" in subject
+    assert "[CSC]" in subject

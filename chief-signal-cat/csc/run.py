@@ -28,19 +28,19 @@ def run_pipeline() -> RunLog:
         raw = fetch_all_sources(cfg["sources"])
         log.items_fetched = len(raw)
 
-        filtered = filter_items(raw, cfg["filter_rules"])
+        filtered = filter_items(raw, cfg["filter"])
         log.items_filtered = len(filtered)
 
-        deduped = deduplicate(filtered, cfg["dedup"])
+        deduped = deduplicate(filtered, cfg["deduplicate"])
         log.items_deduplicated = len(deduped)
 
-        classified = classify_items(deduped, cfg["classifier"])
+        classified, failures = classify_items(deduped, cfg["classification"])
         log.items_classified = len(classified)
 
-        scored = score_items(classified, cfg["scorer"])
+        scored = score_items(classified, cfg["scoring"])
         log.items_scored = len(scored)
 
-        brief = summarise(scored, cfg["summariser"])
+        brief = summarise(scored, cfg["summary"])
         send_email(brief, cfg["email"])
 
         log.status = "completed"

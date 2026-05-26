@@ -14,7 +14,6 @@ def _load(filename: str) -> dict:
 def load_config() -> dict:
     cfg = {}
     cfg.update(_load("sources.yaml"))
-    cfg.update(_load("filters.yaml"))
-    cfg.update(_load("scoring.yaml"))
+    cfg.update(_load("pipeline.yaml"))
     cfg.update(_load("email.yaml"))
     return cfg

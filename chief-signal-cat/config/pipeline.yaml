@@ -50,7 +50,7 @@ deduplicate:
 
 
 classification:
-  model: "claude-sonnet-4-6"
+  model: "gemini-2.0-flash"
   max_body_chars: 2000
   confidence_floor: 0.5
   max_retries: 1
@@ -68,7 +68,7 @@ scoring:
 
 
 summary:
-  model: "claude-sonnet-4-6"
+  model: "gemini-2.0-flash"
   top_n: 5
   audience: "product, design, and consumer finance stakeholders"
   max_output_tokens: 2000
