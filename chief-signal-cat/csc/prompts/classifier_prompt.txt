@@ -25,3 +25,10 @@ Scoring guidance:
 - impact_score: Potential business impact if true
 - urgency_score: How quickly action may be needed
 - confidence: Your self-assessed confidence in this classification (not a fact claim)
+
+Confidence and score calibration:
+- If the body text is very short or just repeats the title, confidence must be below 0.5
+- If the source is an aggregator with no original reporting, reduce confidence by 0.2
+- relevance_score can be high if the topic directly concerns AU car or consumer finance, regardless of evidence depth
+- impact_score, urgency_score, and novelty_score require evidence in the body text to score above 0.6 — a headline alone cannot tell you how large the impact is or how urgent the response needs to be
+- Score what you can verify from the provided text, not what the headline implies
