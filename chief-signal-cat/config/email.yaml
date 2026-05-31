@@ -2,7 +2,7 @@ email:
   provider: "smtp"  # or "sendgrid"
   smtp_host: ""
   smtp_port: 587
-  from_address: "signal-cat@example.com"
+  from_address: "fan2010.wu@gmail.com"
   recipients:
-    - "product-team@example.com"
-  alert_address: "alerts@example.com"
+    - "fan2010.wu@gmail.com"
+  alert_address: "fan2010.wu@gmail.com"

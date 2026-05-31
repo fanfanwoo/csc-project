@@ -60,6 +60,8 @@ def _call_llm(system_prompt: str, user_prompt: str, model: str) -> str:
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             max_output_tokens=1024,
+            response_mime_type="application/json",
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     return response.text

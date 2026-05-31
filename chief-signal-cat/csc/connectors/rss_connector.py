@@ -1,11 +1,16 @@
 import logging
 import re
+import ssl
 import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+
+import certifi
+
+_SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
 from csc.schemas.items import RawItem, VALID_SOURCE_TYPES, VALID_TRUST_TIERS, VALID_REGIONS
 
@@ -122,7 +127,7 @@ def _fetch_with_retry(
     for attempt in range(1, max_attempts + 1):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "ChiefSignalCat/1.0"})
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, context=_SSL_CTX, timeout=30) as response:
                 return response.read().decode("utf-8")
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
             if attempt < max_attempts:

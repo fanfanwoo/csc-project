@@ -19,16 +19,23 @@ def send_email(brief: Brief, cfg: dict) -> None:
 
 
 def _send_smtp(subject: str, body: str, cfg: dict) -> None:
+    from_address = cfg.get("from_address") or os.environ.get("SMTP_USER", "")
     msg = MIMEText(body, "plain")
     msg["Subject"] = subject
-    msg["From"] = cfg["from_address"]
+    msg["From"] = from_address
     msg["To"] = ", ".join(cfg["recipients"])
 
+    smtp_host = os.environ.get("SMTP_HOST") or cfg.get("smtp_host") or ""
+    smtp_port = int(os.environ.get("SMTP_PORT") or cfg.get("smtp_port") or 587)
+    smtp_user = os.environ["SMTP_USER"]
+    smtp_password = os.environ["SMTP_PASSWORD"]
+    from_address = cfg.get("from_address") or smtp_user
+
     try:
-        with smtplib.SMTP(cfg["smtp_host"], cfg.get("smtp_port", 587)) as server:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
             server.starttls()
-            server.login(os.environ["SMTP_USER"], os.environ["SMTP_PASSWORD"])
-            server.sendmail(cfg["from_address"], cfg["recipients"], msg.as_string())
+            server.login(smtp_user, smtp_password)
+            server.sendmail(from_address, cfg["recipients"], msg.as_string())
         logger.info("email sent", extra={"recipients": cfg["recipients"], "subject": subject})
     except Exception as exc:
         logger.error("email send failed", extra={"error": str(exc)})

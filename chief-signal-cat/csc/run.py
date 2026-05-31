@@ -10,7 +10,7 @@ from csc.pipeline.score import score_items
 from csc.pipeline.summarise import summarise
 from csc.pipeline.send_email import send_email
 from csc.schemas.runs import RunLog
-from csc.storage.jsonl_store import append_run_log
+from csc.storage.jsonl_store import append_run_log, save_brief
 from csc.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -28,7 +28,8 @@ def run_pipeline() -> RunLog:
         raw = fetch_all_sources(cfg["sources"])
         log.items_fetched = len(raw)
 
-        filtered = filter_items(raw, cfg["filter"])
+        filtered_all = filter_items(raw, cfg["filter"])
+        filtered = [i for i in filtered_all if i.filter_status != "dropped"]
         log.items_filtered = len(filtered)
 
         deduped = deduplicate(filtered, cfg["deduplicate"])
@@ -41,6 +42,9 @@ def run_pipeline() -> RunLog:
         log.items_scored = len(scored)
 
         brief = summarise(scored, cfg["summary"])
+        brief.run_id = run_id
+        brief_path = save_brief(brief)
+        logger.info("brief saved", extra={"path": str(brief_path)})
         send_email(brief, cfg["email"])
 
         log.status = "completed"

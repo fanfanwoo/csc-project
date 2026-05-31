@@ -1,7 +1,9 @@
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-import anthropic
+from google import genai
+from google.genai import types
 
 from csc.schemas.briefs import Brief
 from csc.schemas.items import ScoredItem
@@ -13,14 +15,14 @@ _PROMPT_DIR = Path(__file__).parent.parent / "prompts"
 
 
 def summarise(items: list[ScoredItem], cfg: dict) -> Brief:
-    client = anthropic.Anthropic()
+    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
     system_prompt = (_PROMPT_DIR / "summariser_prompt.txt").read_text()
-    model = cfg.get("model", "claude-sonnet-4-20250514")
+    model = cfg.get("model", "gemini-2.0-flash")
     top_n = cfg.get("top_n", 5)
     audience = cfg.get("audience", "product, design, and consumer finance stakeholders")
     max_tokens = cfg.get("max_output_tokens", 2000)
 
-    top_items = [i for i in items if not i.filter_reason][:top_n]
+    top_items = items[:top_n]
     review_items = [i for i in top_items if i.human_review_flag]
     now = datetime.now(timezone.utc)
     date_range = now.strftime("%Y-%m-%d")
@@ -33,13 +35,16 @@ def summarise(items: list[ScoredItem], cfg: dict) -> Brief:
         "Generate the intelligence brief following the template exactly."
     )
 
-    response = client.messages.create(
+    response = client.models.generate_content(
         model=model,
-        max_tokens=max_tokens,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=max_tokens,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
-    markdown = response.content[0].text
+    markdown = response.text
     one_line = _extract_one_liner(markdown)
 
     logger.info("brief generated", extra={"model": model, "top_n": len(top_items)})

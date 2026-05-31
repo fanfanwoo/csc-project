@@ -6,7 +6,7 @@ pipeline:
 filter:
   target_regions:
     - "AU"
-  max_age_days: 7
+  max_age_days: 365
   domain_allowlist: []          # empty = allow all domains
   require_keyword_match: true
   min_keyword_matches: 1
@@ -50,7 +50,7 @@ deduplicate:
 
 
 classification:
-  model: "gemini-2.0-flash"
+  model: "gemini-2.5-flash"
   max_body_chars: 2000
   confidence_floor: 0.5
   max_retries: 1
@@ -68,7 +68,7 @@ scoring:
 
 
 summary:
-  model: "gemini-2.0-flash"
+  model: "gemini-2.5-flash"
   top_n: 5
   audience: "product, design, and consumer finance stakeholders"
   max_output_tokens: 2000
