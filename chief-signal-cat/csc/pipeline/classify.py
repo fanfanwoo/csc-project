@@ -142,7 +142,6 @@ def _build_user_prompt(item: FilteredItem, max_body: int) -> str:
         f"Trust tier: {item.trust_tier}\n"
         f"Region: {item.region}\n"
         f"Published: {item.published_at}\n"
-        f"URL: {item.url}\n"
         f"Title: {item.title}\n"
         f"Body:\n{body_excerpt}\n\n"
         f"Matched keywords: {kw_ctx}\n\n"

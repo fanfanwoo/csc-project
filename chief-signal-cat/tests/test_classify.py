@@ -223,6 +223,32 @@ def test_single_source_shows_no_duplicates_in_prompt():
     assert "single source" in captured["prompt"].lower()
 
 
+def test_excluded_fields_not_in_prompt():
+    item = _filtered_item(
+        filter_status="kept",
+        filter_reason="passed_threshold",
+        source_weight=0.8,
+        duplicate_item_ids=["item1", "item2"],
+        dedup_methods=["exact_url"],
+    )
+    captured = {}
+
+    def capture(sys_p, user_p, model):
+        captured["prompt"] = user_p
+        return json.dumps(MOCK_LLM_RESPONSE)
+
+    with patch("csc.pipeline.classify._call_llm", side_effect=capture):
+        classify_items([item], CFG)
+
+    prompt = captured["prompt"]
+    assert "filter_status" not in prompt.lower()
+    assert "filter_reason" not in prompt.lower()
+    assert "source_weight" not in prompt.lower()
+    assert "duplicate_item_ids" not in prompt.lower()
+    assert "dedup_methods" not in prompt.lower()
+
+
+
 # ── Score clamping ────────────────────────────────────────────
 
 
