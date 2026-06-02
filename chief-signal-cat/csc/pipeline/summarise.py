@@ -45,7 +45,8 @@ def summarise(items: list[ScoredItem], cfg: dict) -> Brief:
         ),
     )
     markdown = response.text
-    one_line = _extract_one_liner(markdown)
+    one_line = _extract_section(markdown, "One-line readout")
+    watch_item = _extract_section(markdown, "Watch item")
 
     logger.info("brief generated", extra={"model": model, "top_n": len(top_items)})
     return Brief(
@@ -53,6 +54,7 @@ def summarise(items: list[ScoredItem], cfg: dict) -> Brief:
         date_range=date_range,
         generated_at=now,
         one_line_readout=one_line,
+        watch_item=watch_item,
         markdown_body=markdown,
         top_signal_ids=[i.id for i in top_items],
         human_review_ids=[i.id for i in review_items],
@@ -71,9 +73,18 @@ def _format_item(item: ScoredItem) -> str:
     )
 
 
-def _extract_one_liner(markdown: str) -> str:
-    for line in markdown.splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            return line[:200]
+def _extract_section(markdown: str, heading: str) -> str:
+    """Return first non-empty content line after a ## {heading} section."""
+    lines = markdown.splitlines()
+    in_section = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower() == f"## {heading.lower()}":
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("##"):
+                break
+            if stripped and stripped != "---":
+                return stripped[:200]
     return ""

@@ -1,6 +1,6 @@
 """
 Full pipeline integration test using fixture data and mocked external calls
-(Anthropic API, SMTP, feedparser).
+(Gemini API, SMTP).
 """
 import json
 from datetime import datetime, timezone
@@ -11,6 +11,25 @@ import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 NOW = datetime.now(timezone.utc)
+
+SAMPLE_RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>ASIC Media</title>
+    <item>
+      <title>ASIC lending update</title>
+      <link>https://asic.gov.au/1</link>
+      <description>New rules.</description>
+      <pubDate>Mon, 01 Jun 2026 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>ASIC consumer credit review</title>
+      <link>https://asic.gov.au/2</link>
+      <description>Review announced.</description>
+      <pubDate>Tue, 02 Jun 2026 08:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>"""
 
 MOCK_CLASSIFIER_RESPONSE = {
     "domain": "policy",
@@ -30,25 +49,17 @@ MOCK_BRIEF_TEXT = "# Brief\n\n## One-line readout\nASIC tightens rules.\n\n## To
 
 
 @pytest.fixture
-def mock_anthropic():
+def mock_gemini_client():
     client = MagicMock()
-    client.messages.create.side_effect = [
-        # classifier calls
-        MagicMock(
-            content=[MagicMock(text=json.dumps(MOCK_CLASSIFIER_RESPONSE))],
-            usage=MagicMock(input_tokens=100, output_tokens=50),
-        ),
-        MagicMock(
-            content=[MagicMock(text=json.dumps(MOCK_CLASSIFIER_RESPONSE))],
-            usage=MagicMock(input_tokens=100, output_tokens=50),
-        ),
-        # summariser call
-        MagicMock(content=[MagicMock(text=MOCK_BRIEF_TEXT)]),
+    client.models.generate_content.side_effect = [
+        MagicMock(text=json.dumps(MOCK_CLASSIFIER_RESPONSE)),
+        MagicMock(text=json.dumps(MOCK_CLASSIFIER_RESPONSE)),
+        MagicMock(text=MOCK_BRIEF_TEXT),
     ]
     return client
 
 
-def test_pipeline_end_to_end(mock_anthropic, tmp_path):
+def test_pipeline_end_to_end(mock_gemini_client, tmp_path):
     from csc.pipeline.fetch_sources import fetch_all_sources
     from csc.pipeline.filter_items import filter_items
     from csc.pipeline.deduplicate import deduplicate
@@ -58,39 +69,36 @@ def test_pipeline_end_to_end(mock_anthropic, tmp_path):
 
     cfg = {
         "sources": [
-            {"name": "ASIC Media", "type": "regulator", "url": "https://asic.gov.au/rss", "region": "AU", "source_weight": 1.0, "max_items": 5}
+            {
+                "name": "ASIC Media", "type": "regulator", "trust_tier": "official",
+                "url": "https://asic.gov.au/rss", "region": "AU",
+                "source_weight": 1.0, "max_items": 5,
+            }
         ],
         "filter_rules": {
             "target_regions": ["AU"], "max_age_days": 30,
             "domain_allowlist": [], "keyword_blocklist": [], "keyword_allowlist": ["ASIC"],
         },
         "dedup": {"fuzzy_threshold": 0.85, "dedup_across_regions": False},
-        "classifier": {"model": "claude-sonnet-4-20250514", "max_body_chars": 2000, "confidence_floor": 0.5, "max_retries": 0},
+        "classifier": {"model": "gemini-2.0-flash", "max_body_chars": 2000, "confidence_floor": 0.5, "max_retries": 0},
         "scorer": {
             "weights": {"relevance": 0.30, "impact": 0.25, "urgency": 0.20, "novelty": 0.15, "source_weight": 0.10},
             "confidence_penalty_threshold": 0.3, "confidence_penalty_factor": 0.5,
             "source_weights": {"ASIC Media": 1.0, "default": 0.5},
         },
-        "summariser": {"model": "claude-sonnet-4-20250514", "top_n": 5, "audience": "test", "max_output_tokens": 1000},
+        "summariser": {"model": "gemini-2.0-flash", "top_n": 5, "audience": "test", "max_output_tokens": 1000},
     }
 
-    mock_feed = MagicMock()
-    mock_feed.entries = [
-        MagicMock(link="https://asic.gov.au/1", title="ASIC lending update", summary="New rules.", id="e1",
-                  published_parsed=(2025, 5, 1, 8, 0, 0, 0, 0, 0)),
-        MagicMock(link="https://asic.gov.au/2", title="ASIC consumer credit review", summary="Review announced.", id="e2",
-                  published_parsed=(2025, 5, 2, 8, 0, 0, 0, 0, 0)),
-    ]
-
     with (
-        patch("csc.connectors.rss_connector.feedparser.parse", return_value=mock_feed),
-        patch("csc.pipeline.classify.anthropic.Anthropic", return_value=mock_anthropic),
-        patch("csc.pipeline.summarise.anthropic.Anthropic", return_value=mock_anthropic),
+        patch("csc.connectors.rss_connector._fetch_with_retry", return_value=SAMPLE_RSS_XML),
+        patch("csc.pipeline.classify.genai.Client", return_value=mock_gemini_client),
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_gemini_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         raw = fetch_all_sources(cfg["sources"])
         filtered = filter_items(raw, cfg["filter_rules"])
         deduped = deduplicate([i for i in filtered if not i.filter_reason], cfg["dedup"])
-        classified = classify_items(deduped, cfg["classifier"])
+        classified, _ = classify_items(deduped, cfg["classifier"])
         scored = score_items(classified, cfg["scorer"])
         brief = summarise(scored, cfg["summariser"])
 

@@ -1,0 +1,5 @@
+google-genai>=1.0
+pyyaml>=6.0
+certifi>=2024.0
+beautifulsoup4>=4.12
+pytest>=8.0

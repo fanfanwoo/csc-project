@@ -6,7 +6,7 @@ pipeline:
 filter:
   target_regions:
     - "AU"
-  max_age_days: 365
+  max_age_days: 14
   domain_allowlist: []          # empty = allow all domains
   require_keyword_match: true
   min_keyword_matches: 1

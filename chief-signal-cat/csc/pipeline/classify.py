@@ -132,8 +132,7 @@ def _build_user_prompt(item: FilteredItem, max_body: int) -> str:
     if item.duplicate_count > 0:
         dup_ctx = (
             f"Count: {item.duplicate_count}\n"
-            f"Also reported by: {', '.join(item.duplicate_source_names)}\n"
-            f"Detection: {', '.join(item.dedup_methods)}"
+            f"Also reported by: {', '.join(item.duplicate_source_names)}"
         )
     else:
         dup_ctx = "None (single source)"
@@ -146,8 +145,7 @@ def _build_user_prompt(item: FilteredItem, max_body: int) -> str:
         f"URL: {item.url}\n"
         f"Title: {item.title}\n"
         f"Body:\n{body_excerpt}\n\n"
-        f"Matched keywords: {kw_ctx}\n"
-        f"Filter status: {item.filter_status}\n\n"
+        f"Matched keywords: {kw_ctx}\n\n"
         f"Source corroboration:\n{dup_ctx}"
     )
 

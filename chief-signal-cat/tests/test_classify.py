@@ -192,7 +192,6 @@ def test_duplicate_context_in_prompt():
 
     assert "Count: 2" in captured["prompt"]
     assert "Reuters" in captured["prompt"]
-    assert "exact_url" in captured["prompt"]
 
 
 def test_matched_keywords_in_prompt():

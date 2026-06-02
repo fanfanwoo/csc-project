@@ -306,3 +306,63 @@ def test_strip_html_empty():
 
 def test_strip_html_collapses_whitespace():
     assert _strip_html("<p>  lots   of   space  </p>") == "lots of space"
+
+
+# ── fetch_sources.py connector dispatch ───────────────────────
+# Tests for the router in csc.pipeline.fetch_sources — separate from
+# the rss_connector.fetch_all_sources tested above.
+
+def test_dispatch_routes_rss_connector():
+    """connector: "rss" (or default) dispatches to fetch_rss."""
+    from csc.pipeline.fetch_sources import fetch_all_sources as pipeline_fetch_all
+
+    rss_cfg = {**VALID_SOURCE_CFG, "connector": "rss"}
+    with patch("csc.pipeline.fetch_sources.fetch_rss", return_value=[]) as mock_rss, \
+         patch("csc.pipeline.fetch_sources.fetch_official_page", return_value=[]) as mock_op:
+        pipeline_fetch_all([rss_cfg])
+
+    mock_rss.assert_called_once_with(rss_cfg)
+    mock_op.assert_not_called()
+
+
+def test_dispatch_routes_official_page_connector():
+    """connector: "official_page" dispatches to fetch_official_page."""
+    from csc.pipeline.fetch_sources import fetch_all_sources as pipeline_fetch_all
+
+    op_cfg = {
+        **OFFICIAL_SOURCE_CFG,
+        "connector": "official_page",
+        "url": "https://download.asic.gov.au/scripts/newsroom/newsroom-all.json",
+    }
+    with patch("csc.pipeline.fetch_sources.fetch_rss", return_value=[]) as mock_rss, \
+         patch("csc.pipeline.fetch_sources.fetch_official_page", return_value=[]) as mock_op:
+        pipeline_fetch_all([op_cfg])
+
+    mock_op.assert_called_once_with(op_cfg)
+    mock_rss.assert_not_called()
+
+
+def test_dispatch_default_connector_is_rss():
+    """No connector field → defaults to fetch_rss."""
+    from csc.pipeline.fetch_sources import fetch_all_sources as pipeline_fetch_all
+
+    cfg_no_connector = {k: v for k, v in VALID_SOURCE_CFG.items() if k != "connector"}
+    with patch("csc.pipeline.fetch_sources.fetch_rss", return_value=[]) as mock_rss, \
+         patch("csc.pipeline.fetch_sources.fetch_official_page", return_value=[]) as mock_op:
+        pipeline_fetch_all([cfg_no_connector])
+
+    mock_rss.assert_called_once()
+    mock_op.assert_not_called()
+
+
+def test_dispatch_unknown_connector_logs_error_and_skips(caplog):
+    """Unknown connector key logs error and skips the source (no crash)."""
+    import logging
+    from csc.pipeline.fetch_sources import fetch_all_sources as pipeline_fetch_all
+
+    bad_cfg = {**VALID_SOURCE_CFG, "connector": "nonexistent"}
+    with caplog.at_level(logging.ERROR, logger="csc.pipeline.fetch_sources"):
+        result = pipeline_fetch_all([bad_cfg])
+
+    assert result == []
+    assert any("unknown connector" in r.message for r in caplog.records)

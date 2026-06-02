@@ -2,18 +2,23 @@ sources:
   - name: "Google News AU"
     type: "news"
     trust_tier: "aggregator"
+    connector: "rss"
     url: "https://news.google.com/rss/search?q=car+loan+OR+vehicle+finance+OR+auto+lending+OR+BNPL+car+OR+consumer+credit+australia&hl=en-AU&gl=AU&ceid=AU:en"
     region: "AU"
     source_weight: 0.5
     max_items: 50
 
-  # Source #2 — add after Google News works end to end
-  # Requires an actual RSS feed URL — the /newsroom/media-releases/ page is HTML only.
-  # Find ASIC's RSS endpoint or build an HTML connector before enabling.
-  # - name: "ASIC Media"
-  #   type: "regulator"
-  #   trust_tier: "official"
-  #   url: ""
-  #   region: "AU"
-  #   source_weight: 1.0
-  #   max_items: 20
+  # ASIC publishes across its full remit (not only consumer finance).
+  # All official/regulator items are keyword-exempt (filter_items.py line ~138),
+  # so all ~20 items per run reach the classifier.
+  # Day 1 decision: rely on classifier relevance_score + scorer + top_n:5 to
+  # filter off-domain items. Tighten with a relevance gate if off-topic items
+  # surface in the brief after the first few runs.
+  - name: "ASIC Media"
+    type: "regulator"
+    trust_tier: "official"
+    connector: "official_page"
+    url: "https://download.asic.gov.au/scripts/newsroom/newsroom-all.json"
+    region: "AU"
+    source_weight: 1.0
+    max_items: 20

@@ -6,7 +6,7 @@ from csc.schemas.items import ScoredItem
 
 NOW = datetime.now(timezone.utc)
 CFG = {
-    "model": "claude-sonnet-4-20250514",
+    "model": "gemini-2.0-flash",
     "top_n": 3,
     "audience": "product and finance stakeholders",
     "max_output_tokens": 2000,
@@ -46,10 +46,11 @@ def _scored(id_="abc") -> ScoredItem:
 
 def test_summarise_returns_brief():
     mock_client = MagicMock()
-    mock_client.messages.create.return_value = MagicMock(
-        content=[MagicMock(text=MOCK_BRIEF)]
-    )
-    with patch("csc.pipeline.summarise.anthropic.Anthropic", return_value=mock_client):
+    mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
+    with (
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
         brief = summarise([_scored()], CFG)
 
     assert brief.markdown_body == MOCK_BRIEF
@@ -59,11 +60,12 @@ def test_summarise_returns_brief():
 
 def test_summarise_limits_to_top_n():
     mock_client = MagicMock()
-    mock_client.messages.create.return_value = MagicMock(
-        content=[MagicMock(text=MOCK_BRIEF)]
-    )
+    mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     items = [_scored(str(i)) for i in range(10)]
-    with patch("csc.pipeline.summarise.anthropic.Anthropic", return_value=mock_client):
+    with (
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
         brief = summarise(items, CFG)
 
     assert len(brief.top_signal_ids) <= CFG["top_n"]
