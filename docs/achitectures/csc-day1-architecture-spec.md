@@ -270,6 +270,8 @@ filter_rules:
 5. Config lives in a YAML/JSON file, never hardcoded
 6. `keyword_match_exempt_tiers` items pass step 5 automatically — still tagged with `matched_keywords` if any match
 
+**ASIC relevance (decision, June 2026):** ASIC is keyword-exempt (official tier), so off-domain releases can reach the brief. Accepted for Day 1 — the large_inference_leap / single_source_high_impact flags surface them for human judgment rather than presenting them as clean signal. Revisit with a relevance gate only if off-domain items begin crowding core car-finance signals out of the top 5.
+
 **Day 2 upgrade:** Merges with Deduplicate into the Normalisation/enrichment agent which adds entity extraction, source credibility scoring, and geographic enrichment.
 
 ---
@@ -474,8 +476,20 @@ This is what stakeholders actually read. The brief needs to be concise, actionab
 ## Human review flags
 {Items that should not be treated as final intelligence without human review. If none: "None this cycle."}
 ```
+**Per-signal structure (decision, June 2026):** Each signal uses a **"Why it matters"**
+line for CSC's interpretation, kept visually separate from the **Evidence** line
+(source-supported facts only — name, date, URL) and the **Confidence** line (level +
+reason). This replaces the earlier mandatory Fact / Implication / Assumption format,
+which read too clinically for a product/design audience.
 
-The **Fact / Implication / Assumption** structure is mandatory. It prevents the classic LLM failure mode of turning a small article into a large strategic claim. The `Assumption` field forces the writer to make uncertainty visible rather than hide it in confident-sounding prose.
+The discipline F/I/A enforced still holds: the point was always to stop the model
+turning a small article into a large strategic claim, and to keep uncertainty visible
+rather than buried in confident prose. That discipline is now carried by — (a) Evidence
+and Confidence remaining distinct lines, so source fact never blurs into inference;
+(b) upstream guards in the pipeline: the classifier's score calibration (impact/urgency
+capped on headline-only items), the scorer's confidence penalty, and human-review flags;
+and (c) phrasing "Why it matters" conditionally where an implication rests on an
+assumption ("…if X holds").
 
 **Prompt structure:** (Full prompt in references/prompting-guide.md)
 - System prompt: role, audience, tone constraints, template enforcement
