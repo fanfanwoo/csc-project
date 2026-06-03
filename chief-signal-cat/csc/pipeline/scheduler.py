@@ -8,13 +8,11 @@ GCP migration (Day 2): Cloud Run + Cloud Scheduler call run_once() unchanged.
 The migration is a trigger swap — no code changes needed here.
 Caveat: local cron only fires while the machine is on.
 """
-import os
-import smtplib
 import sys
 import time
-from email.mime.text import MIMEText
 
 from csc.config import load_config
+from csc.pipeline.send_email import send_plain_text
 from csc.run import run_pipeline
 from csc.utils.logging import get_logger
 
@@ -49,35 +47,21 @@ def run_once() -> None:
 
 
 def _send_alert() -> None:
-    """Send a plain-text failure alert. Logs and continues if SMTP is unavailable."""
+    """Send a plain-text failure alert via the configured email transport."""
     try:
         cfg = load_config()
-        alert_address = cfg.get("email", {}).get("alert_address")
-        if not alert_address:
+        email_cfg = cfg.get("email", {})
+        if not email_cfg.get("alert_address"):
             logger.error("no alert_address configured — skipping alert email")
             return
-
-        smtp_host = os.environ.get("SMTP_HOST") or cfg["email"].get("smtp_host") or ""
-        smtp_port = int(os.environ.get("SMTP_PORT") or cfg["email"].get("smtp_port") or 587)
-        smtp_user = os.environ.get("SMTP_USER", "")
-        smtp_password = os.environ.get("SMTP_PASSWORD", "")
-        from_address = cfg["email"].get("from_address") or smtp_user
-
-        msg = MIMEText(
-            "The CSC pipeline failed after 2 consecutive attempts.\n"
-            "Check logs for details.",
-            "plain",
+        send_plain_text(
+            subject="[CSC ALERT] Pipeline failed after 2 attempts",
+            body="The CSC pipeline failed after 2 consecutive attempts.\nCheck logs for details.",
+            cfg=email_cfg,
         )
-        msg["Subject"] = "[CSC ALERT] Pipeline failed after 2 attempts"
-        msg["From"] = from_address
-        msg["To"] = alert_address
-
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(from_address, [alert_address], msg.as_string())
-
-        logger.info("alert email sent", extra={"alert_address": alert_address})
+        logger.info("alert email sent", extra={"alert_address": email_cfg["alert_address"]})
+    except NotImplementedError:
+        logger.error("alert not sent: SendGrid transport not implemented")
     except Exception as exc:
         logger.error("failed to send alert email", extra={"error": str(exc)})
 
