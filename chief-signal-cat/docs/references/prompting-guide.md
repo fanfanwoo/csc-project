@@ -41,6 +41,23 @@ Return JSON with:
 }
 ```
 
+## Summariser brief structure decision
+
+**Decision (2026-06-03): keep "Why it matters" per-signal structure. Do not migrate to Fact / Implication / Assumption (F/I/A).**
+
+Rationale: "Why it matters" reads naturally for a product/design audience and the repo already uses it. The rigor that F/I/A enforces is preserved by treating each line as a strict zone:
+
+| Line | Contains | Must NOT contain |
+|------|----------|-----------------|
+| **Why it matters** | CSC's interpretation — implication for car, finance, product, design, risk, or AI | Source facts, raw quotes |
+| **Evidence** | Source name, publish date, URL — facts only | Inference, interpretation |
+| **Confidence** | Level (High/Medium/Low) + one-clause reason | Vague hedges without reason |
+| **Human review** | Yes/No + reason if Yes | — |
+
+When an implication rests on an assumption, phrase "Why it matters" conditionally (e.g. "…if the ruling extends to AU lenders"). Never blend fact and interpretation into one confident sentence — keep uncertainty visible.
+
+Do not rename the top-level section headings (`One-line readout`, `Top signals`, `Watch item`, `Human review flags`): `summarise.py` parses these headings to extract `one_line_readout` and `watch_item`.
+
 ## Summariser prompt
 
 System:
