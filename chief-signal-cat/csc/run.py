@@ -37,6 +37,17 @@ def run_pipeline() -> RunLog:
 
         classified, failures = classify_items(deduped, cfg["classification"])
         log.items_classified = len(classified)
+        if failures:
+            log.error_count += len(failures)
+            log.errors.extend(
+                {
+                    "stage": "classify",
+                    "item_id": f.item_id,
+                    "error_type": f.error_type,
+                    "error": f.error_message,
+                }
+                for f in failures
+            )
 
         scored = score_items(classified, cfg["scoring"])
         log.items_scored = len(scored)
