@@ -7,11 +7,12 @@ asserting flags as a side effect of classify_items.
 """
 from datetime import datetime, timezone
 
-from csc.pipeline.verify import apply_review_flags
+from csc.pipeline.verify import apply_review_flags, verify_items
 from csc.schemas.items import ClassifiedItem
 
 NOW = datetime.now(timezone.utc)
 CONFIDENCE_FLOOR = 0.5
+HIGH_IMPACT = 0.8
 
 
 def _classified_item(**overrides) -> ClassifiedItem:
@@ -97,3 +98,90 @@ def test_apply_review_flags_returns_same_list():
     items = [_classified_item(confidence=0.9, impact_score=0.5, rationale="Clean.")]
     result = apply_review_flags(items, CONFIDENCE_FLOOR)
     assert result is items
+
+
+# ── verify_items partition (the gate behaviour) ───────────────
+
+
+def _clean_asic(**overrides):
+    # Strong, well-evidenced, corroborated official item — should pass.
+    base = dict(
+        evidence_level="full_body",
+        confidence=0.9,
+        impact_score=0.5,
+        duplicate_count=2,
+        duplicate_source_names=["ABC", "AFR"],
+        rationale="Routine market update with no stakes keywords.",
+        title="Vehicle sales tick up in Q2",
+    )
+    base.update(overrides)
+    return _classified_item(**base)
+
+
+def test_clean_item_passes():
+    item = _clean_asic()
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert passed == [item]
+    assert held == []
+    assert item.human_review_flag is False
+
+
+def test_low_confidence_held():
+    item = _clean_asic(confidence=0.3)
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert held == [item]
+    assert item not in passed
+    assert "low_confidence" in item.human_review_reason
+
+
+def test_single_source_high_impact_held():
+    item = _clean_asic(duplicate_count=0, duplicate_source_names=[], impact_score=0.9)
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert held == [item]
+    assert item not in passed
+    assert "single_source_high_impact" in item.human_review_reason
+
+
+def test_headline_only_high_impact_held():
+    # Google-News-style: corroborated (so single_source does NOT fire) but the only
+    # evidence is a headline — the new rule must hold it.
+    item = _clean_asic(
+        evidence_level="headline_only",
+        impact_score=0.9,
+        duplicate_count=2,
+        source_name="Google News AU",
+    )
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert held == [item]
+    assert item not in passed
+    assert "headline_only_high_impact" in item.human_review_reason
+
+
+def test_sensitive_domain_strong_item_passes_marked():
+    # "lending" in rationale → sensitive_domain, but otherwise strong → passes WITH flag.
+    item = _clean_asic(rationale="New responsible lending obligations for car finance.")
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert passed == [item]
+    assert held == []
+    assert item.human_review_flag is True
+    assert "sensitive_domain" in item.human_review_reason
+
+
+def test_partition_keeps_held_out_of_pass_stream():
+    clean = _clean_asic(id="clean-1")
+    weak = _clean_asic(id="weak-1", confidence=0.2, title="Weak signal")
+    passed, held = verify_items([clean, weak], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    passed_ids = {i.id for i in passed}
+    held_ids = {i.id for i in held}
+    assert held_ids.isdisjoint(passed_ids)
+    assert weak in held
+    assert clean in passed
+
+
+def test_threshold_is_configurable():
+    # impact 0.7 holds under a 0.6 threshold, passes under the default 0.8.
+    item = lambda: _clean_asic(duplicate_count=0, duplicate_source_names=[], impact_score=0.7)
+    _, held_low = verify_items([item()], CONFIDENCE_FLOOR, 0.6)
+    passed_default, held_default = verify_items([item()], CONFIDENCE_FLOOR, 0.8)
+    assert len(held_low) == 1
+    assert len(passed_default) == 1 and held_default == []

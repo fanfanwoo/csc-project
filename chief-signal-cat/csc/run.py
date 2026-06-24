@@ -7,12 +7,12 @@ from csc.pipeline.filter_items import filter_items
 from csc.pipeline.deduplicate import deduplicate
 from csc.pipeline.evidence_state import label_evidence
 from csc.pipeline.classify import classify_items
-from csc.pipeline.verify import apply_review_flags
+from csc.pipeline.verify import verify_items
 from csc.pipeline.score import score_items
 from csc.pipeline.summarise import summarise
 from csc.pipeline.send_email import send_email
 from csc.schemas.runs import RunLog
-from csc.storage.jsonl_store import append_run_log, save_brief
+from csc.storage.jsonl_store import append_items, append_run_log, save_brief
 from csc.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -54,12 +54,17 @@ def run_pipeline() -> RunLog:
             )
 
         confidence_floor = cfg["classification"].get("confidence_floor", 0.5)
-        reviewed = apply_review_flags(classified, confidence_floor)
+        high_impact_threshold = cfg.get("verify", {}).get("high_impact_threshold", 0.8)
+        passed, held = verify_items(classified, confidence_floor, high_impact_threshold)
+        log.items_held = len(held)
+        if held:
+            append_items(run_id, "review", held)
+            logger.info("review queue persisted", extra={"run_id": run_id, "held": len(held)})
 
-        scored = score_items(reviewed, cfg["scoring"])
+        scored = score_items(passed, cfg["scoring"])
         log.items_scored = len(scored)
 
-        brief = summarise(scored, cfg["summary"])
+        brief = summarise(scored, cfg["summary"], review_queue=held)
         brief.run_id = run_id
         brief_path = save_brief(brief)
         logger.info("brief saved", extra={"path": str(brief_path)})

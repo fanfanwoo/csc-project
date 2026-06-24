@@ -6,7 +6,7 @@ from google import genai
 from google.genai import types
 
 from csc.schemas.briefs import Brief
-from csc.schemas.items import ScoredItem
+from csc.schemas.items import ClassifiedItem, ScoredItem
 from csc.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -14,7 +14,12 @@ logger = get_logger(__name__)
 _PROMPT_DIR = Path(__file__).parent.parent / "prompts"
 
 
-def summarise(items: list[ScoredItem], cfg: dict) -> Brief:
+def summarise(
+    items: list[ScoredItem],
+    cfg: dict,
+    review_queue: list[ClassifiedItem] | None = None,
+) -> Brief:
+    review_queue = review_queue or []
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
     system_prompt = (_PROMPT_DIR / "summariser_prompt.txt").read_text()
     model = cfg.get("model", "gemini-2.0-flash")
@@ -48,7 +53,15 @@ def summarise(items: list[ScoredItem], cfg: dict) -> Brief:
     one_line = _extract_section(markdown, "One-line readout")
     watch_item = _extract_section(markdown, "Watch item")
 
-    logger.info("brief generated", extra={"model": model, "top_n": len(top_items)})
+    # Held items never reach the LLM (they are out of the scored stream), so append
+    # the review queue deterministically — its presence cannot depend on the model.
+    if review_queue:
+        markdown = markdown.rstrip() + "\n\n" + _render_review_queue(review_queue)
+
+    logger.info(
+        "brief generated",
+        extra={"model": model, "top_n": len(top_items), "review_queue": len(review_queue)},
+    )
     return Brief(
         run_id="",
         date_range=date_range,
@@ -58,7 +71,19 @@ def summarise(items: list[ScoredItem], cfg: dict) -> Brief:
         markdown_body=markdown,
         top_signal_ids=[i.id for i in top_items],
         human_review_ids=[i.id for i in review_items],
+        review_queue_ids=[i.id for i in review_queue],
     )
+
+
+def _render_review_queue(items: list[ClassifiedItem]) -> str:
+    lines = [
+        "## Human review queue",
+        "Held by the verify gate pending human review — flagged, not final signals.",
+        "",
+    ]
+    for it in items:
+        lines.append(f"- **{it.title}** ({it.source_name}) — {it.human_review_reason}")
+    return "\n".join(lines)
 
 
 def _format_item(item: ScoredItem) -> str:
