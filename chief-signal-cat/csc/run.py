@@ -6,6 +6,7 @@ from csc.pipeline.fetch_sources import fetch_all_sources
 from csc.pipeline.filter_items import filter_items
 from csc.pipeline.deduplicate import deduplicate
 from csc.pipeline.classify import classify_items
+from csc.pipeline.verify import apply_review_flags
 from csc.pipeline.score import score_items
 from csc.pipeline.summarise import summarise
 from csc.pipeline.send_email import send_email
@@ -49,7 +50,10 @@ def run_pipeline() -> RunLog:
                 for f in failures
             )
 
-        scored = score_items(classified, cfg["scoring"])
+        confidence_floor = cfg["classification"].get("confidence_floor", 0.5)
+        reviewed = apply_review_flags(classified, confidence_floor)
+
+        scored = score_items(reviewed, cfg["scoring"])
         log.items_scored = len(scored)
 
         brief = summarise(scored, cfg["summary"])

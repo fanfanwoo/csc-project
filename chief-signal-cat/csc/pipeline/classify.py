@@ -2,8 +2,8 @@
 LLM classification stage — calls Gemini to classify each FilteredItem.
 
 Returns (classified_items, failures). Failures are ClassificationFailure objects,
-never fake ClassifiedItem records. Human review flags are applied deterministically
-by code after classification, not requested from the LLM.
+never fake ClassifiedItem records. Classification is pure: human-review flags are
+applied downstream by the verify stage (csc/pipeline/verify.py), not here.
 """
 
 import json
@@ -31,14 +31,13 @@ def classify_items(
     system_prompt = (_PROMPT_DIR / "classifier_prompt.txt").read_text()
     model = cfg.get("model", "gemini-2.0-flash")
     max_body = cfg.get("max_body_chars", 2000)
-    confidence_floor = cfg.get("confidence_floor", 0.5)
     max_retries = cfg.get("max_retries", 1)
 
     classified: list[ClassifiedItem] = []
     failures: list[ClassificationFailure] = []
 
     for item in items:
-        result = _classify_one(item, system_prompt, model, max_body, max_retries, confidence_floor)
+        result = _classify_one(item, system_prompt, model, max_body, max_retries)
         if isinstance(result, ClassifiedItem):
             classified.append(result)
         else:
@@ -73,7 +72,6 @@ def _classify_one(
     model: str,
     max_body: int,
     max_retries: int,
-    confidence_floor: float,
 ) -> ClassifiedItem | ClassificationFailure:
     user_prompt = _build_user_prompt(item, max_body)
     error_type = "api_error"
@@ -107,7 +105,6 @@ def _classify_one(
             break
 
         ci = _build_classified_item(item, data)
-        ci = _apply_review_flags(ci, confidence_floor)
         logger.info("classified", extra={"id": item.id, "model": model})
         return ci
 
@@ -163,30 +160,10 @@ def _build_classified_item(item: FilteredItem, data: dict) -> ClassifiedItem:
         rationale=data["rationale"],
         evidence_quote=data.get("evidence_quote"),
         inference_note=data.get("inference_note"),
-        human_review_flag=False,
-        human_review_reason=None,
+        # human_review_flag / human_review_reason left at dataclass defaults —
+        # set downstream by verify.apply_review_flags (Day 2 v1a Phase 1).
     )
 
 
 def _clamp(val: float) -> float:
     return max(0.0, min(1.0, val))
-
-
-def _apply_review_flags(ci: ClassifiedItem, confidence_floor: float) -> ClassifiedItem:
-    review_keywords = {"regulatory", "legal", "compliance", "lending", "privacy", "liability"}
-    text = (ci.title + " " + ci.rationale).lower()
-    reasons = []
-
-    if ci.confidence < confidence_floor:
-        reasons.append("low_confidence")
-    if any(k in text for k in review_keywords):
-        reasons.append("sensitive_domain")
-    if ci.duplicate_count == 0 and ci.impact_score >= 0.8:
-        reasons.append("single_source_high_impact")
-    if ci.inference_note and len(ci.inference_note) > 200:
-        reasons.append("large_inference_leap")
-
-    if reasons:
-        ci.human_review_flag = True
-        ci.human_review_reason = ", ".join(reasons)
-    return ci
