@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from csc.pipeline.classify import classify_items, _apply_review_flags
+from csc.pipeline.classify import classify_items
 from csc.schemas.items import ClassificationFailure, ClassifiedItem, FilteredItem
 
 NOW = datetime.now(timezone.utc)
@@ -135,41 +135,8 @@ def test_classify_exhausts_retries_returns_failure():
     assert failures[0].retry_count == 1
 
 
-# ── Human review flags (applied by code, not LLM) ─────────────
-
-
-def test_review_flag_low_confidence():
-    low_conf = {**MOCK_LLM_RESPONSE, "confidence": 0.3, "impact_score": 0.3}
-    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(low_conf)):
-        classified, _ = classify_items([_filtered_item()], CFG)
-    assert classified[0].human_review_flag is True
-    assert "low_confidence" in classified[0].human_review_reason
-
-
-def test_review_flag_sensitive_domain():
-    # "lending" appears in MOCK_LLM_RESPONSE rationale
-    no_dup = {**MOCK_LLM_RESPONSE, "impact_score": 0.3}
-    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(no_dup)):
-        classified, _ = classify_items([_filtered_item()], CFG)
-    assert classified[0].human_review_flag is True
-    assert "sensitive_domain" in classified[0].human_review_reason
-
-
-def test_review_flag_single_source_high_impact():
-    item = _filtered_item(duplicate_count=0)
-    high_impact = {**MOCK_LLM_RESPONSE, "confidence": 0.9, "impact_score": 0.9, "rationale": "No keywords here."}
-    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(high_impact)):
-        classified, _ = classify_items([item], CFG)
-    assert classified[0].human_review_flag is True
-    assert "single_source_high_impact" in classified[0].human_review_reason
-
-
-def test_no_review_flag_when_clean():
-    item = _filtered_item(duplicate_count=2, duplicate_source_names=["Reuters"])
-    clean = {**MOCK_LLM_RESPONSE, "confidence": 0.9, "impact_score": 0.5, "rationale": "Minor market update."}
-    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(clean)):
-        classified, _ = classify_items([item], CFG)
-    assert classified[0].human_review_flag is False
+# Human-review flag tests moved to test_verify.py (Day 2 v1a Phase 1).
+# classify_items no longer applies flags; verify.apply_review_flags does.
 
 
 # ── User prompt content ───────────────────────────────────────

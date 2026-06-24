@@ -14,6 +14,7 @@ class RunLog:
     items_filtered: int = 0
     items_deduplicated: int = 0
     items_classified: int = 0
+    items_held: int = 0
     items_scored: int = 0
     error_count: int = 0
     errors: list[dict] = field(default_factory=list)

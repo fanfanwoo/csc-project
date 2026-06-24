@@ -5,12 +5,14 @@ from csc.config import load_config
 from csc.pipeline.fetch_sources import fetch_all_sources
 from csc.pipeline.filter_items import filter_items
 from csc.pipeline.deduplicate import deduplicate
+from csc.pipeline.evidence_state import label_evidence
 from csc.pipeline.classify import classify_items
+from csc.pipeline.verify import verify_items
 from csc.pipeline.score import score_items
 from csc.pipeline.summarise import summarise
 from csc.pipeline.send_email import send_email
 from csc.schemas.runs import RunLog
-from csc.storage.jsonl_store import append_run_log, save_brief
+from csc.storage.jsonl_store import append_items, append_run_log, save_brief
 from csc.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +37,9 @@ def run_pipeline() -> RunLog:
         deduped = deduplicate(filtered, cfg["deduplicate"])
         log.items_deduplicated = len(deduped)
 
-        classified, failures = classify_items(deduped, cfg["classification"])
+        labelled = label_evidence(deduped)
+
+        classified, failures = classify_items(labelled, cfg["classification"])
         log.items_classified = len(classified)
         if failures:
             log.error_count += len(failures)
@@ -49,10 +53,18 @@ def run_pipeline() -> RunLog:
                 for f in failures
             )
 
-        scored = score_items(classified, cfg["scoring"])
+        confidence_floor = cfg["classification"].get("confidence_floor", 0.5)
+        high_impact_threshold = cfg.get("verify", {}).get("high_impact_threshold", 0.8)
+        passed, held = verify_items(classified, confidence_floor, high_impact_threshold)
+        log.items_held = len(held)
+        if held:
+            append_items(run_id, "review", held)
+            logger.info("review queue persisted", extra={"run_id": run_id, "held": len(held)})
+
+        scored = score_items(passed, cfg["scoring"])
         log.items_scored = len(scored)
 
-        brief = summarise(scored, cfg["summary"])
+        brief = summarise(scored, cfg["summary"], review_queue=held)
         brief.run_id = run_id
         brief_path = save_brief(brief)
         logger.info("brief saved", extra={"path": str(brief_path)})

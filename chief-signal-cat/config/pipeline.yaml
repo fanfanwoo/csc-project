@@ -56,6 +56,12 @@ classification:
   max_retries: 1
 
 
+verify:
+  # Shared by the single_source_high_impact and headline_only_high_impact hold
+  # rules. One named value, not a hardcoded duplicate — tune the gate in one place.
+  high_impact_threshold: 0.8
+
+
 scoring:
   weights:
     relevance: 0.30

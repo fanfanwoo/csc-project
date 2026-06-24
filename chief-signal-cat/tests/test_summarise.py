@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from csc.pipeline.summarise import summarise
-from csc.schemas.items import ScoredItem
+from csc.schemas.items import ClassifiedItem, ScoredItem
 
 NOW = datetime.now(timezone.utc)
 CFG = {
@@ -69,3 +69,46 @@ def test_summarise_limits_to_top_n():
         brief = summarise(items, CFG)
 
     assert len(brief.top_signal_ids) <= CFG["top_n"]
+
+
+def _held(id_="held-1") -> ClassifiedItem:
+    return ClassifiedItem(
+        id=id_, url="https://news.google.com/x", canonical_url=None,
+        title="High-interest car loans leave borrowers exposed", body="Headline snippet.",
+        source_name="Google News AU", source_type="news", trust_tier="aggregator",
+        region="AU", published_at=NOW, fetched_at=NOW, raw_metadata={},
+        evidence_level="headline_only",
+        domain="finance", signal_type="threat",
+        impact_score=0.9, confidence=0.7, rationale="Consumer harm in car lending.",
+        human_review_flag=True, human_review_reason="headline_only_high_impact",
+    )
+
+
+def test_summarise_appends_review_queue_section():
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
+    held = [_held()]
+    with (
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
+        brief = summarise([_scored()], CFG, review_queue=held)
+
+    assert "## Human review queue" in brief.markdown_body
+    assert "headline_only_high_impact" in brief.markdown_body
+    assert "High-interest car loans leave borrowers exposed" in brief.markdown_body
+    assert brief.review_queue_ids == ["held-1"]
+
+
+def test_summarise_no_review_queue_section_when_empty():
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
+    with (
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
+        brief = summarise([_scored()], CFG)
+
+    # No queue → markdown untouched, ids empty.
+    assert brief.markdown_body == MOCK_BRIEF
+    assert brief.review_queue_ids == []
