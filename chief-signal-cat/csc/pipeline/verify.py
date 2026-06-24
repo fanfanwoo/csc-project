@@ -24,7 +24,6 @@ DEFAULT_HIGH_IMPACT_THRESHOLD = 0.8
 HOLD_REASONS = {
     "low_confidence",
     "single_source_high_impact",
-    "large_inference_leap",
     "headline_only_high_impact",
 }
 
@@ -84,8 +83,10 @@ def _reasons_for(
         reasons.append("sensitive_domain")
     if ci.duplicate_count == 0 and ci.impact_score >= high_impact_threshold:
         reasons.append("single_source_high_impact")
-    if ci.inference_note and len(ci.inference_note) > 200:
-        reasons.append("large_inference_leap")
+    # NOTE: large_inference_leap (inference_note length > 200) was removed after the
+    # first live run held 17/20 items on it — the classifier writes 210–447-char
+    # notes routinely, so length is a weak proxy for an actual inference leap.
+    # Revisit with a relative measure in v1b.
     # A headline-only story (Google News, no fetchable body) cannot become a
     # high-impact top signal on a headline alone — hold it for a human.
     if ci.evidence_level == "headline_only" and ci.impact_score >= high_impact_threshold:

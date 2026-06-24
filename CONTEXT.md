@@ -78,9 +78,10 @@ that enum**), `evidence_level` (`full_body|excerpt|headline_only`), `evidence_so
 `enrichment_status`, `enrichment_reason`.
 
 Review routing (verify gate): **reliability flags hold** (`low_confidence`,
-`single_source_high_impact`, `large_inference_leap`, `headline_only_high_impact`);
+`single_source_high_impact`, `headline_only_high_impact`);
 **`sensitive_domain` marks but passes**. One shared threshold `verify.high_impact_threshold`
-(0.8). Full rationale in `docs/adr/0001-verify-gate-routing.md`.
+(0.8). (`large_inference_leap` was dropped after the first live run held 17/20 on it —
+length is a weak proxy; v1b candidate.) Full rationale in `docs/adr/0001-verify-gate-routing.md`.
 
 ## Config, storage, LLM
 
