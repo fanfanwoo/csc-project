@@ -57,6 +57,15 @@ class RawItem:
     # Extensible — source-specific fields, publisher provenance, etc.
     raw_metadata: dict = field(default_factory=dict)
 
+    # Evidence provenance — populated by the evidence_state step, travels with the
+    # signal through every later stage. Defaults are deliberately the "weakest"
+    # values so an un-processed item is never mistaken for strong evidence.
+    evidence_category: str = "aggregator"   # "official" | "publisher" | "aggregator" (derived from trust_tier)
+    evidence_level: str = "headline_only"   # "full_body" | "excerpt" | "headline_only"
+    evidence_source: str = "unknown"        # "official_page" | "publisher_rss" | "aggregator_rss"
+    enrichment_status: str = "skipped"      # "success" | "skipped" | "failed"
+    enrichment_reason: str | None = None    # e.g. "body_present" | "aggregator_url_not_fetchable" | "parse_failed"
+
     @staticmethod
     def generate_id(url: str) -> str:
         return hashlib.sha256(url.encode()).hexdigest()[:16]

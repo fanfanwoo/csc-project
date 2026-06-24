@@ -5,6 +5,7 @@ from csc.config import load_config
 from csc.pipeline.fetch_sources import fetch_all_sources
 from csc.pipeline.filter_items import filter_items
 from csc.pipeline.deduplicate import deduplicate
+from csc.pipeline.evidence_state import label_evidence
 from csc.pipeline.classify import classify_items
 from csc.pipeline.verify import apply_review_flags
 from csc.pipeline.score import score_items
@@ -36,7 +37,9 @@ def run_pipeline() -> RunLog:
         deduped = deduplicate(filtered, cfg["deduplicate"])
         log.items_deduplicated = len(deduped)
 
-        classified, failures = classify_items(deduped, cfg["classification"])
+        labelled = label_evidence(deduped)
+
+        classified, failures = classify_items(labelled, cfg["classification"])
         log.items_classified = len(classified)
         if failures:
             log.error_count += len(failures)
