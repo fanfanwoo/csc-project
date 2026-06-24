@@ -68,17 +68,18 @@ def test_review_flag_single_source_high_impact():
     assert "single_source_high_impact" in item.human_review_reason
 
 
-def test_review_flag_large_inference_leap():
+def test_long_inference_note_no_longer_holds():
+    # large_inference_leap was dropped in v1a (length is a weak proxy) — a long
+    # inference note alone must NOT flag or hold an otherwise clean item.
     item = _classified_item(
         confidence=0.9,
         impact_score=0.3,
         duplicate_count=2,
         rationale="Minor market update.",
-        inference_note="x" * 201,
+        inference_note="x" * 400,
     )
     apply_review_flags([item], CONFIDENCE_FLOOR)
-    assert item.human_review_flag is True
-    assert "large_inference_leap" in item.human_review_reason
+    assert item.human_review_flag is False
 
 
 def test_no_review_flag_when_clean():
