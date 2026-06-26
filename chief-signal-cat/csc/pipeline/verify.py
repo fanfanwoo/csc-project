@@ -49,9 +49,25 @@ def verify_items(
         else:
             pass_stream.append(ci)
 
+    # Phase 0 effect: official full-body single-source high-impact items that pass
+    # only because of the official exemption (would have been held without it).
+    official_released = sum(
+        1
+        for ci in pass_stream
+        if ci.evidence_category == "official"
+        and ci.evidence_level == "full_body"
+        and ci.duplicate_count == 0
+        and ci.impact_score >= high_impact_threshold
+    )
+
     logger.info(
         "verify gate",
-        extra={"total": len(items), "passed": len(pass_stream), "held": len(hold_stream)},
+        extra={
+            "total": len(items),
+            "passed": len(pass_stream),
+            "held": len(hold_stream),
+            "official_released": official_released,
+        },
     )
     return pass_stream, hold_stream
 
@@ -81,7 +97,19 @@ def _reasons_for(
         reasons.append("low_confidence")
     if any(k in text for k in REVIEW_KEYWORDS):
         reasons.append("sensitive_domain")
-    if ci.duplicate_count == 0 and ci.impact_score >= high_impact_threshold:
+    # Exempt official sources ONLY when the evidence is actually strong (full body):
+    # a full-body ASIC release is strong single-source evidence, not weak, and should
+    # be surfaced (marked via sensitive_domain if high-stakes), not hidden. An official
+    # item that fetched to excerpt/headline-only is NOT exempt — partial official
+    # evidence at high impact still warrants a human look.
+    official_full_body = (
+        ci.evidence_category == "official" and ci.evidence_level == "full_body"
+    )
+    if (
+        not official_full_body
+        and ci.duplicate_count == 0
+        and ci.impact_score >= high_impact_threshold
+    ):
         reasons.append("single_source_high_impact")
     # NOTE: large_inference_leap (inference_note length > 200) was removed after the
     # first live run held 17/20 items on it — the classifier writes 210–447-char

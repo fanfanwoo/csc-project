@@ -186,3 +186,58 @@ def test_threshold_is_configurable():
     passed_default, held_default = verify_items([item()], CONFIDENCE_FLOOR, 0.8)
     assert len(held_low) == 1
     assert len(passed_default) == 1 and held_default == []
+
+
+# ── Phase 0: official + full_body exemption from single_source_high_impact ──
+
+
+def _official_single_high(**overrides):
+    # Official, full-body, single-source, high-impact — strong evidence, should pass.
+    base = dict(
+        evidence_category="official",
+        evidence_level="full_body",
+        duplicate_count=0,
+        duplicate_source_names=[],
+        impact_score=0.9,
+        confidence=0.9,
+        rationale="Routine regulator update with no stakes keywords.",
+        title="ASIC publishes quarterly enforcement update",
+    )
+    base.update(overrides)
+    return _clean_asic(**base)
+
+
+def test_official_full_body_single_source_high_impact_passes():
+    item = _official_single_high()
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert passed == [item]
+    assert held == []
+    assert item.human_review_flag is False
+
+
+def test_official_full_body_sensitive_passes_marked():
+    item = _official_single_high(rationale="New responsible lending enforcement action.")
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert passed == [item]
+    assert held == []
+    assert item.human_review_flag is True
+    assert "sensitive_domain" in item.human_review_reason
+    assert "single_source_high_impact" not in (item.human_review_reason or "")
+
+
+def test_official_excerpt_high_impact_still_held():
+    # Partial official evidence (excerpt, not full body) is NOT exempt.
+    item = _official_single_high(evidence_level="excerpt")
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert held == [item]
+    assert item not in passed
+    assert "single_source_high_impact" in item.human_review_reason
+
+
+def test_non_official_full_body_single_source_still_held():
+    # Publisher full-body single-source high-impact gets no exemption.
+    item = _official_single_high(evidence_category="publisher")
+    passed, held = verify_items([item], CONFIDENCE_FLOOR, HIGH_IMPACT)
+    assert held == [item]
+    assert item not in passed
+    assert "single_source_high_impact" in item.human_review_reason
