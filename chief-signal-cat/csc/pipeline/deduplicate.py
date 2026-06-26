@@ -14,8 +14,14 @@ from dataclasses import replace
 from difflib import SequenceMatcher
 
 from csc.schemas.items import FilteredItem
+from csc.utils.evidence import category_for
 
 logger = logging.getLogger("csc.pipeline.deduplicate")
+
+# Prefer the duplicate that can bear a real body. enrich_fetch runs AFTER dedup, so
+# at merge time publisher bodies don't exist yet — but body-capability is knowable
+# now from trust_tier. Rank by evidence category, then fall back to date.
+_CATEGORY_RANK = {"official": 2, "publisher": 1, "aggregator": 0}
 
 
 def deduplicate(items: list[FilteredItem], cfg: dict) -> list[FilteredItem]:
@@ -98,7 +104,15 @@ def _pass2_fuzzy_title(items: list[FilteredItem], threshold: float) -> list[Filt
 
 
 def _pick_winner(a: FilteredItem, b: FilteredItem) -> tuple[FilteredItem, FilteredItem]:
-    """Return (winner, loser). Dated item beats undated; earlier published_at wins."""
+    """Return (winner, loser). Prefer the higher evidence category (official >
+    publisher > aggregator) so the body-capable duplicate survives; on a tie, dated
+    beats undated and earlier published_at wins."""
+    ra = _CATEGORY_RANK.get(category_for(a.trust_tier), 0)
+    rb = _CATEGORY_RANK.get(category_for(b.trust_tier), 0)
+    if ra != rb:
+        return (a, b) if ra > rb else (b, a)
+
+    # Tie on evidence category → existing date logic.
     if a.published_at is None and b.published_at is None:
         return a, b
     if a.published_at is None:

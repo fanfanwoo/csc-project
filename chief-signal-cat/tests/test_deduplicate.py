@@ -313,6 +313,72 @@ def test_similar_but_distinct_stories_not_merged():
     assert all(i.duplicate_count == 0 for i in result)
 
 
+# ── Phase 3: prefer the body-capable (higher evidence category) duplicate ─────
+
+
+def test_publisher_survives_over_aggregator_regardless_of_date():
+    # Same story in Google News (aggregator, earlier) and Australian Broker
+    # (publisher, later). Publisher must win so enrich_fetch can give it a body —
+    # even though the aggregator copy would win on date.
+    agg = _item(
+        "agg", url="https://news.google.com/rss/articles/redir", canonical_url=None,
+        trust_tier="aggregator", source_name="Google News AU",
+        title="ASIC reviews car finance commissions",
+        published_at=NOW - timedelta(days=3),
+    )
+    pub = _item(
+        "pub", url="https://www.brokernews.com.au/news/a-1.aspx",
+        trust_tier="trade_press", source_name="Australian Broker",
+        title="ASIC reviews car finance commissions",
+        published_at=NOW - timedelta(days=1),
+    )
+    result = deduplicate([agg, pub], CFG)
+    assert len(result) == 1
+    assert result[0].id == "pub"
+    assert result[0].source_name == "Australian Broker"
+    assert result[0].duplicate_count == 1
+
+
+def test_official_survives_over_publisher():
+    pub = _item(
+        "pub", url="https://www.brokernews.com.au/news/b-2.aspx",
+        trust_tier="trade_press", source_name="Australian Broker",
+        title="Negative gearing overhaul becomes law",
+        published_at=NOW - timedelta(days=3),
+    )
+    off = _item(
+        "off", url="https://asic.gov.au/news/1", trust_tier="official",
+        source_name="ASIC Media", title="Negative gearing overhaul becomes law",
+        published_at=NOW - timedelta(days=1),
+    )
+    result = deduplicate([pub, off], CFG)
+    assert len(result) == 1
+    assert result[0].id == "off"
+
+
+def test_same_category_still_resolves_by_date():
+    early = _item(
+        "early", url="https://www.brokernews.com.au/news/1.aspx", trust_tier="trade_press",
+        title="Broker market update for the week", published_at=NOW - timedelta(days=3),
+    )
+    late = _item(
+        "late", url="https://www.brokernews.com.au/news/2.aspx", trust_tier="trade_press",
+        title="Broker market update for the week", published_at=NOW - timedelta(days=1),
+    )
+    result = deduplicate([late, early], CFG)
+    assert len(result) == 1
+    assert result[0].id == "early"
+
+
+def test_pick_winner_publisher_beats_aggregator():
+    pub = _item("pub", trust_tier="trade_press", published_at=NOW)  # later date
+    agg = _item("agg", trust_tier="aggregator", canonical_url=None,
+                published_at=NOW - timedelta(days=5))  # earlier — would win on date alone
+    winner, loser = _pick_winner(agg, pub)
+    assert winner.id == "pub"
+    assert loser.id == "agg"
+
+
 def test_dropped_items_not_in_input_contract():
     # Dedup receives only non-dropped items — verify a keep_with_warning item deduplicates normally
     a = _item("a", url="https://asic.gov.au/news/1", title="ASIC tightens car loan rules in Australia",
