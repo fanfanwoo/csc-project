@@ -107,33 +107,45 @@ def test_unknown_trust_tier_falls_back_to_aggregator():
     assert item.evidence_level == "headline_only"
 
 
-# ── Publisher stub branch (no such source in v1a) ─────────────
+# ── Publisher branch: labels from body, preserves enrich's provenance ─────────
+# evidence_state owns evidence_*; enrich_fetch (runs before) owns enrichment_*.
 
 
 def test_publisher_long_body_is_full_body():
-    item = _filtered_item(trust_tier="major_news", body="x" * 700)
+    # Simulate enrich_fetch having populated a full body + its provenance.
+    item = _filtered_item(
+        trust_tier="major_news", body="x" * 700,
+        enrichment_status="success", enrichment_reason="body_found",
+    )
     label_evidence([item])
     assert item.evidence_category == "publisher"
     assert item.evidence_source == "publisher_rss"
     assert item.evidence_level == "full_body"
+    # enrich's provenance is preserved, not overwritten
     assert item.enrichment_status == "success"
     assert item.enrichment_reason == "body_found"
 
 
 def test_publisher_short_body_is_excerpt():
-    item = _filtered_item(trust_tier="trade_press", body="Short excerpt.")
+    item = _filtered_item(
+        trust_tier="trade_press", body="Short excerpt.",
+        enrichment_status="success", enrichment_reason="body_found",
+    )
     label_evidence([item])
     assert item.evidence_level == "excerpt"
-    assert item.enrichment_status == "success"
-    assert item.enrichment_reason == "body_found"
 
 
-def test_publisher_empty_body_is_failed():
-    item = _filtered_item(trust_tier="primary_company", body="")
+def test_publisher_empty_body_keeps_enrich_failed_status():
+    # enrich_fetch failed to get a body (paywall/network); evidence_state labels
+    # headline_only and must KEEP enrich's failed status/reason.
+    item = _filtered_item(
+        trust_tier="primary_company", body="",
+        enrichment_status="failed", enrichment_reason="paywalled_or_empty",
+    )
     label_evidence([item])
     assert item.evidence_level == "headline_only"
     assert item.enrichment_status == "failed"
-    assert item.enrichment_reason == "parse_failed"
+    assert item.enrichment_reason == "paywalled_or_empty"
 
 
 # ── Defaults / contract ───────────────────────────────────────
