@@ -22,3 +22,20 @@ sources:
     region: "AU"
     source_weight: 1.0
     max_items: 20
+
+  # Body-bearing publisher (v1b). The Atom feed <summary> is only a headline +
+  # standfirst (~180–215 chars) — NOT evidence. But each entry's alternate <link>
+  # is a real, direct article URL (…-NNNNNN.aspx), server-rendered static HTML with
+  # the full body present. enrich_fetch fetches that URL and extracts the body from
+  # body_selector. Mirrors the ASIC two-stage pattern. /premium/ paths are paywalled.
+  # source_weight 0.6 = Day 1 trust-tier reference for trade_press (not ad-hoc).
+  # Mortgage/property-heavy; lighter on car finance — do not raise weight speculatively.
+  - name: "Australian Broker"
+    type: "news"
+    trust_tier: "trade_press"
+    connector: "rss"
+    url: "https://www.brokernews.com.au/rss"
+    region: "AU"
+    source_weight: 0.6
+    max_items: 30
+    body_selector: "div.article-detail"
