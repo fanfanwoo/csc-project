@@ -56,6 +56,12 @@ classification:
   max_retries: 1
 
 
+enrich_fetch:
+  fetch_delay: 0.5                 # polite delay (seconds) between detail fetches
+  full_body_min_chars: 600         # aligned with evidence_state._FULL_BODY_MIN_CHARS
+  # body selectors are per-source, under sources.yaml (source.body_selector) — not global here
+
+
 verify:
   # Shared by the single_source_high_impact and headline_only_high_impact hold
   # rules. One named value, not a hardcoded duplicate — tune the gate in one place.

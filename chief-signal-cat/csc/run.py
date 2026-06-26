@@ -5,6 +5,7 @@ from csc.config import load_config
 from csc.pipeline.fetch_sources import fetch_all_sources
 from csc.pipeline.filter_items import filter_items
 from csc.pipeline.deduplicate import deduplicate
+from csc.pipeline.enrich_fetch import enrich
 from csc.pipeline.evidence_state import label_evidence
 from csc.pipeline.classify import classify_items
 from csc.pipeline.verify import verify_items
@@ -37,7 +38,9 @@ def run_pipeline() -> RunLog:
         deduped = deduplicate(filtered, cfg["deduplicate"])
         log.items_deduplicated = len(deduped)
 
-        labelled = label_evidence(deduped)
+        enriched = enrich(deduped, cfg.get("enrich_fetch", {}), cfg["sources"])
+
+        labelled = label_evidence(enriched)
 
         classified, failures = classify_items(labelled, cfg["classification"])
         log.items_classified = len(classified)

@@ -52,6 +52,21 @@ SAMPLE_RSS = """<?xml version="1.0" encoding="UTF-8"?>
   </channel>
 </rss>"""
 
+# Australian Broker (v1b) — Atom. Single <link rel="alternate"> is the real article
+# URL; body lives in <content> (which the connector ignores), so body is empty at
+# fetch time and gets filled by enrich_fetch. Mirrors the live feed shape.
+ATOM_BROKER_FEED = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Australian Broker</title>
+  <entry>
+    <id>tag:brokernews.com.au,2026-06-26:/news/breaking-news/289572</id>
+    <title type="text">Negative gearing and CGT overhaul becomes law</title>
+    <updated>2026-06-26T03:00:00Z</updated>
+    <link rel="alternate" href="https://www.brokernews.com.au/news/breaking-news/negative-gearing-and-cgt-overhaul-becomes-law-289572.aspx"/>
+    <content type="html">&lt;p&gt;Standfirst only, not the article body.&lt;/p&gt;</content>
+  </entry>
+</feed>"""
+
 VALID_SOURCE_CFG = {
     "name": "Google News AU",
     "type": "news",
@@ -188,6 +203,26 @@ def test_aggregator_canonical_url_is_none():
 def test_official_canonical_url_is_link():
     items = _parse_rss(SAMPLE_RSS, "ASIC Media", "regulator", "official", 1.0, "AU")
     assert all(i.canonical_url == i.url for i in items)
+
+
+def test_trade_press_atom_canonical_url_is_real_article_link():
+    # Publisher (trade_press) must carry the real, fetchable article URL — not None
+    # (aggregator) and not a redirect — so enrich_fetch can fetch the body.
+    items = _parse_rss(ATOM_BROKER_FEED, "Australian Broker", "news", "trade_press", 0.6, "AU")
+    assert len(items) == 1
+    item = items[0]
+    assert item.trust_tier == "trade_press"
+    assert item.canonical_url == item.url
+    assert item.canonical_url is not None
+    assert item.canonical_url.startswith("https://www.brokernews.com.au/news/")
+    assert item.canonical_url.endswith(".aspx")
+
+
+def test_trade_press_body_empty_at_fetch_time():
+    # The connector reads <summary>, not <content>, so publisher bodies are empty at
+    # fetch time and filled later by enrich_fetch. Documents the Phase 1 watch-item.
+    items = _parse_rss(ATOM_BROKER_FEED, "Australian Broker", "news", "trade_press", 0.6, "AU")
+    assert items[0].body == ""
 
 
 def test_aggregator_name_in_metadata():
