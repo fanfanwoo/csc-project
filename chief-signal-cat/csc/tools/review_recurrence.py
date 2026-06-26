@@ -7,10 +7,18 @@ source would have resolved. A one-off hold is normal routing; recurrence across
 runs is the evidence that deterministic in-run dedup is no longer enough.
 
 This tool reads the per-run review-queue JSONL files (data/review/{run_id}.jsonl)
-and clusters held items by normalised title across runs, counting how many distinct
+and clusters held items by **exact URL** across runs, counting how many distinct
 runs each signal was held in. It reports only items held on a **single-source**
 reason (single_source_high_impact, headline_only_high_impact) — sensitive_domain
 marks-but-passes, and large_inference_leap was retired in v1a.
+
+Clustering is on canonical_url (exact), **never fuzzy title**. Evergreen finance
+templates ("inflation puts rate hikes back on the table") recur every quarter with a
+near-identical headline but are *distinct events* at *distinct URLs*. Fuzzy-title
+clustering would read them as one recurring signal and manufacture false recurrence.
+Telling near-identical-but-distinct events apart is the corroboration agent's hard
+problem (its judge-match step) — it must not be smuggled into this watch. So recurrence
+here means literally the same article held run after run.
 
 Read-only. No pipeline state is touched.
 
@@ -22,27 +30,18 @@ Read-only. No pipeline state is touched.
 import argparse
 import glob
 import json
-import re
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 from pathlib import Path
 
 # Hold reasons a second source could resolve. sensitive_domain is excluded (it marks,
 # it does not hold); large_inference_leap is excluded (retired in v1a).
 CORROBORATION_REASONS = {"single_source_high_impact", "headline_only_high_impact"}
 
-# Titles within this similarity are treated as the same recurring signal across runs.
-_SIMILARITY_THRESHOLD = 0.85
-
-# Strip ASIC media-release doc prefixes ("26-132MR ") so the same release recurring
-# under a slightly different feed title still clusters.
-_DOC_PREFIX = re.compile(r"^\s*\d{2}-\d+mr\b[\s:–-]*", re.IGNORECASE)
-
 
 @dataclass
 class Cluster:
-    representative: str                       # normalised title of the first member
-    example_title: str                        # a human-readable raw title
+    key: str                                  # canonical_url (or url) — the exact identity
+    example_title: str                        # a human-readable title for display only
     run_ids: set[str] = field(default_factory=set)
     reasons: set[str] = field(default_factory=set)
     sources: set[str] = field(default_factory=set)
@@ -60,10 +59,10 @@ class Cluster:
         return bool(self.categories - {"official"})
 
 
-def normalise_title(title: str) -> str:
-    title = _DOC_PREFIX.sub("", title or "")
-    title = re.sub(r"\s+", " ", title).strip().lower()
-    return title
+def signal_key(item: dict) -> str:
+    """Exact identity of a held signal: canonical_url, falling back to url. Never the
+    title — different events can share a headline template."""
+    return item.get("canonical_url") or item.get("url") or ""
 
 
 def _held_single_source_items(path: str) -> list[dict]:
@@ -81,38 +80,32 @@ def _held_single_source_items(path: str) -> list[dict]:
 
 
 def build_clusters(run_files: dict[str, list[dict]]) -> list[Cluster]:
-    """Cluster held single-source items across runs by normalised title.
+    """Cluster held single-source items across runs by exact URL.
 
-    `run_files` maps run_id -> list of held item dicts. Greedy clustering: an item
-    joins the first cluster whose representative is similar enough, else starts one.
+    `run_files` maps run_id -> list of held item dicts. An item joins the cluster
+    with the same signal_key (canonical_url / url), else starts one. No fuzzy match:
+    a near-identical headline at a different URL is a different signal.
     """
-    clusters: list[Cluster] = []
+    clusters: dict[str, Cluster] = {}
     for run_id, items in run_files.items():
         for item in items:
             item_reasons = set((item.get("human_review_reason") or "").split(", ")) & CORROBORATION_REASONS
             if not item_reasons:
                 continue  # only single-source holds count; ignore anything else passed in
-            norm = normalise_title(item.get("title", ""))
-            if not norm:
+            key = signal_key(item)
+            if not key:
                 continue
-            cluster = _match(clusters, norm)
+            cluster = clusters.get(key)
             if cluster is None:
-                cluster = Cluster(representative=norm, example_title=item.get("title", ""))
-                clusters.append(cluster)
+                cluster = Cluster(key=key, example_title=item.get("title", ""))
+                clusters[key] = cluster
             cluster.run_ids.add(run_id)
             cluster.reasons.update(item_reasons)
             if item.get("source_name"):
                 cluster.sources.add(item["source_name"])
             if item.get("evidence_category"):
                 cluster.categories.add(item["evidence_category"])
-    return clusters
-
-
-def _match(clusters: list[Cluster], norm: str) -> Cluster | None:
-    for c in clusters:
-        if SequenceMatcher(None, c.representative, norm).ratio() >= _SIMILARITY_THRESHOLD:
-            return c
-    return None
+    return list(clusters.values())
 
 
 def load_runs(data_dir: str) -> dict[str, list[dict]]:
