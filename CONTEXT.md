@@ -32,8 +32,8 @@ pipeline table below.
 ## Current state
 
 - Day 1 (deterministic MVP) and Day 2 **v1a** (evidence labelling + verify gate) shipped and **merged to `main`**.
-- **v1b** in progress: **Phase 0** (official full-body exemption from `single_source_high_impact`, ADR-0002) **merged to `main`** (`1996770`). **Phases 1–3** (Australian Broker publisher source + `enrich_fetch` + body-capable dedup, ADR-0003) on branch `day2-v1b-publisher-evidence`, **232 tests passing**, PR open.
-- Two clean v1a live runs done. After v1b merges: a live run to confirm publisher bodies reach the classifier and the `official_released` / publisher-enrich metrics behave.
+- **v1b complete and merged to `main`**: Phase 0 (official full-body exemption, ADR-0002) and Phases 1–3 (Australian Broker publisher source + `enrich_fetch` + body-capable dedup, ADR-0003). **232 tests passing.**
+- Live-validated 2026-06-26: 100 fetched (+30 Australian Broker), publisher item fetched to `full_body` (`enrichment_status=success`) and reached both brief and queue; Phase 0 dropped held to 1. Known: classifier occasionally emits `domain="regulatory"` (not in `VALID_DOMAINS`) → caught as `schema_validation_error`, item dropped — pre-existing, not v1b.
 
 ## The pipeline
 
