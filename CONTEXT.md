@@ -104,9 +104,20 @@ Full rationale in `docs/adr/0001…`, `docs/adr/0002…`.
 - **Run metrics** — each run writes `RunLog.metrics` (`csc/pipeline/run_metrics.py`): publisher_fetched/dropped_filter, enrich success/failed/excerpt, held_headline_only_high_impact, official_released, dedup_publisher_over_aggregator. Read newest-first with `python3 -m csc.tools.run_metrics_report`.
 - **Corroboration trigger** — `python3 -m csc.tools.review_recurrence` clusters held single-source signals by **exact URL** (never fuzzy title) and flags non-official recurrences. Trigger = on-domain non-official signal recurring across runs.
 
+## Scheduling
+
+`csc.pipeline.scheduler` runs the pipeline once with retry + failure-alert email.
+Daily activation via macOS launchd: `deploy/launchd/` has the plist template +
+`install.sh` / `uninstall.sh` + README. **Not loaded by default** — run
+`bash deploy/launchd/install.sh` from `chief-signal-cat/` to activate (daily 07:00
+local; incurs daily Gemini cost + email; laptop must be awake).
+
 ## What's next
 
-- **Accumulate runs** (schedule daily — cron scheduler exists), then read the two tools above after a batch. Decisions they inform: is Australian Broker delivering on-domain car-finance depth (else add a dedicated auto-finance source, body-checked first); is title-only filtering dropping too much (publisher_dropped_filter); is enrich reliable.
+- **Accumulate runs** (activate the launchd schedule above), then read the two watch
+  tools after a batch. Decisions they inform: is Australian Broker delivering on-domain
+  car-finance depth (else add a dedicated auto-finance source, body-checked first); is
+  title-only filtering dropping too much (publisher_dropped_filter); is enrich reliable.
 - **Corroboration agent** (the real Day 2 agentic milestone): v1b satisfies its precondition (a second independent, fetchable source). Build it only when live runs show the queue repeatedly holding single-source signals a second source would resolve — not because v1b made it possible.
 - **Relative inference-leap measure** to replace the dropped char-count rule — now unblocked by publisher body data; needs several runs to calibrate.
 - **Day 3:** integrate CDC (internal) + CSC (external) into a unified intelligence layer.
