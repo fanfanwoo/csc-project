@@ -67,6 +67,28 @@ def test_classify_success_path():
     assert 0.0 <= ci.relevance_score <= 1.0
 
 
+# ── Enum normalization ────────────────────────────────────────
+
+
+def test_regulatory_domain_normalized_to_policy():
+    # The LLM drifts to domain="regulatory" (not in the enum). It must be recovered
+    # to "policy", not dropped as a schema_validation_error.
+    drifted = {**MOCK_LLM_RESPONSE, "domain": "regulatory"}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(drifted)):
+        classified, failures = classify_items([_filtered_item()], CFG)
+    assert len(failures) == 0
+    assert classified[0].domain == "policy"
+
+
+def test_genuinely_invalid_domain_still_fails():
+    # An unknown, non-synonym value is still a validation failure (fail loud).
+    bad = {**MOCK_LLM_RESPONSE, "domain": "weather"}
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(bad)):
+        classified, failures = classify_items([_filtered_item()], {**CFG, "max_retries": 0})
+    assert len(classified) == 0
+    assert failures[0].error_type == "schema_validation_error"
+
+
 # ── Failure paths ─────────────────────────────────────────────
 
 

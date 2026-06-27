@@ -19,6 +19,10 @@ JSON schema:
   "inference_note": "<what you inferred beyond source facts, or null>"
 }
 
+Domain rule:
+- Choose exactly one domain from the list above; never invent a value.
+- Regulatory, legal, or compliance topics are domain "policy" (use signal_type "regulatory_change" to mark the regulatory nature).
+
 Scoring guidance:
 - relevance_score: How directly relevant to AU car or consumer finance business
 - novelty_score: How new or surprising relative to known trends
