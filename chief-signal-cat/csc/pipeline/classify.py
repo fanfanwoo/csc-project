@@ -96,6 +96,7 @@ def _classify_one(
                 continue
             break
 
+        _normalize_enums(data)
         errors = validate_classified_item(data)
         if errors:
             error_type, error_message = "schema_validation_error", "; ".join(errors)
@@ -167,3 +168,24 @@ def _build_classified_item(item: FilteredItem, data: dict) -> ClassifiedItem:
 
 def _clamp(val: float) -> float:
     return max(0.0, min(1.0, val))
+
+
+# Known out-of-enum domain values the LLM drifts to, mapped to the valid enum.
+# "regulatory" is the recurring one: regulatory items are domain "policy" (the
+# regulatory-ness is carried by signal_type="regulatory_change"), not a new domain.
+# Recover these instead of dropping the item as a schema_validation_error.
+_DOMAIN_SYNONYMS = {
+    "regulatory": "policy",
+    "regulation": "policy",
+    "legal": "policy",
+    "compliance": "policy",
+}
+
+
+def _normalize_enums(data: dict) -> None:
+    """Map known LLM enum drift back to valid values, in place, before validation."""
+    domain = data.get("domain")
+    if isinstance(domain, str):
+        canon = _DOMAIN_SYNONYMS.get(domain.strip().lower())
+        if canon:
+            data["domain"] = canon
