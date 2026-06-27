@@ -51,14 +51,7 @@ def verify_items(
 
     # Phase 0 effect: official full-body single-source high-impact items that pass
     # only because of the official exemption (would have been held without it).
-    official_released = sum(
-        1
-        for ci in pass_stream
-        if ci.evidence_category == "official"
-        and ci.evidence_level == "full_body"
-        and ci.duplicate_count == 0
-        and ci.impact_score >= high_impact_threshold
-    )
+    official_released = count_official_released(pass_stream, high_impact_threshold)
 
     logger.info(
         "verify gate",
@@ -127,3 +120,18 @@ def _set_flag(ci: ClassifiedItem, reasons: list[str]) -> None:
     if reasons:
         ci.human_review_flag = True
         ci.human_review_reason = ", ".join(reasons)
+
+
+def count_official_released(
+    items: list[ClassifiedItem], high_impact_threshold: float = DEFAULT_HIGH_IMPACT_THRESHOLD
+) -> int:
+    """Count items that pass only because of the Phase 0 official+full_body exemption
+    (official, full body, single-source, high-impact). Reused for run metrics."""
+    return sum(
+        1
+        for ci in items
+        if ci.evidence_category == "official"
+        and ci.evidence_level == "full_body"
+        and ci.duplicate_count == 0
+        and ci.impact_score >= high_impact_threshold
+    )
