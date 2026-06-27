@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chiefsignalcat.daily</string>
+
+  <!-- Runs the existing scheduler (retry + failure-alert email built in). -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>-m</string>
+    <string>csc.pipeline.scheduler</string>
+  </array>
+
+  <!-- chief-signal-cat/ so `python3 -m csc...` resolves and .env is found. -->
+  <key>WorkingDirectory</key>
+  <string>__WORKDIR__</string>
+
+  <!-- Daily at 07:00 local. If the Mac is asleep at 07:00, launchd runs it once on wake. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>7</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <!-- Do NOT run on load — only on the daily schedule. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>__WORKDIR__/logs/csc.scheduler.log</string>
+  <key>StandardErrorPath</key>
+  <string>__WORKDIR__/logs/csc.scheduler.log</string>
+</dict>
+</plist>
