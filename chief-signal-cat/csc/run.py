@@ -9,6 +9,7 @@ from csc.pipeline.enrich_fetch import enrich
 from csc.pipeline.evidence_state import label_evidence
 from csc.pipeline.classify import classify_items
 from csc.pipeline.verify import verify_items
+from csc.pipeline import run_metrics
 from csc.pipeline.score import score_items
 from csc.pipeline.summarise import summarise
 from csc.pipeline.send_email import send_email
@@ -35,7 +36,8 @@ def run_pipeline() -> RunLog:
         filtered = [i for i in filtered_all if i.filter_status != "dropped"]
         log.items_filtered = len(filtered)
 
-        deduped = deduplicate(filtered, cfg["deduplicate"])
+        dedup_stats: dict = {}
+        deduped = deduplicate(filtered, cfg["deduplicate"], stats=dedup_stats)
         log.items_deduplicated = len(deduped)
 
         enriched = enrich(deduped, cfg.get("enrich_fetch", {}), cfg["sources"])
@@ -63,6 +65,16 @@ def run_pipeline() -> RunLog:
         if held:
             append_items(run_id, "review", held)
             logger.info("review queue persisted", extra={"run_id": run_id, "held": len(held)})
+
+        log.metrics = run_metrics.compute(
+            raw=raw,
+            filtered_kept=filtered,
+            labelled=labelled,
+            held=held,
+            passed=passed,
+            dedup_stats=dedup_stats,
+            high_impact_threshold=high_impact_threshold,
+        )
 
         scored = score_items(passed, cfg["scoring"])
         log.items_scored = len(scored)

@@ -379,6 +379,25 @@ def test_pick_winner_publisher_beats_aggregator():
     assert loser.id == "agg"
 
 
+def test_stats_counts_publisher_over_aggregator():
+    agg = _item("agg", url="https://news.google.com/redir", canonical_url=None,
+                trust_tier="aggregator", source_name="Google News AU",
+                title="ASIC reviews car finance commissions", published_at=NOW - timedelta(days=3))
+    pub = _item("pub", url="https://www.brokernews.com.au/a-1.aspx", trust_tier="trade_press",
+                source_name="Australian Broker",
+                title="ASIC reviews car finance commissions", published_at=NOW - timedelta(days=1))
+    stats: dict = {}
+    deduplicate([agg, pub], CFG, stats=stats)
+    assert stats["publisher_over_aggregator"] == 1
+
+
+def test_stats_none_is_noop():
+    # Default (no stats) must not raise and must merge as before.
+    a = _item("a", url="https://x/1", title="Same story here")
+    b = _item("b", url="https://y/1", title="Same story here")
+    assert len(deduplicate([a, b], CFG)) == 1
+
+
 def test_dropped_items_not_in_input_contract():
     # Dedup receives only non-dropped items — verify a keep_with_warning item deduplicates normally
     a = _item("a", url="https://asic.gov.au/news/1", title="ASIC tightens car loan rules in Australia",

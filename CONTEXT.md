@@ -99,9 +99,14 @@ Full rationale in `docs/adr/0001…`, `docs/adr/0002…`.
 - **LLM:** Google Gemini `gemini-2.5-flash` via `google-genai` SDK, key `GOOGLE_API_KEY`. Prototyped in AI Studio (same model family).
 - **Tests:** pytest, fixture-based. `python3 -m pytest -q` (Mac: `python3` / `pip3`).
 
+## Watching across runs (tools)
+
+- **Run metrics** — each run writes `RunLog.metrics` (`csc/pipeline/run_metrics.py`): publisher_fetched/dropped_filter, enrich success/failed/excerpt, held_headline_only_high_impact, official_released, dedup_publisher_over_aggregator. Read newest-first with `python3 -m csc.tools.run_metrics_report`.
+- **Corroboration trigger** — `python3 -m csc.tools.review_recurrence` clusters held single-source signals by **exact URL** (never fuzzy title) and flags non-official recurrences. Trigger = on-domain non-official signal recurring across runs.
+
 ## What's next
 
-- **After v1b merges:** a live run to confirm publisher items reach the classifier with real bodies, and to read the v1b run metrics (Australian Broker fetched/dropped-on-title, publisher enrich success/failed/excerpt, items still held by `headline_only_high_impact`, dedup cases where publisher beat aggregator, official items released by Phase 0). If car-finance depth is thin, add a dedicated auto-finance source (body-check it first).
+- **Accumulate runs** (schedule daily — cron scheduler exists), then read the two tools above after a batch. Decisions they inform: is Australian Broker delivering on-domain car-finance depth (else add a dedicated auto-finance source, body-checked first); is title-only filtering dropping too much (publisher_dropped_filter); is enrich reliable.
 - **Corroboration agent** (the real Day 2 agentic milestone): v1b satisfies its precondition (a second independent, fetchable source). Build it only when live runs show the queue repeatedly holding single-source signals a second source would resolve — not because v1b made it possible.
 - **Relative inference-leap measure** to replace the dropped char-count rule — now unblocked by publisher body data; needs several runs to calibrate.
 - **Day 3:** integrate CDC (internal) + CSC (external) into a unified intelligence layer.

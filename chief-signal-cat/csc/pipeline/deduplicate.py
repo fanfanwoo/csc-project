@@ -24,17 +24,20 @@ logger = logging.getLogger("csc.pipeline.deduplicate")
 _CATEGORY_RANK = {"official": 2, "publisher": 1, "aggregator": 0}
 
 
-def deduplicate(items: list[FilteredItem], cfg: dict) -> list[FilteredItem]:
+def deduplicate(items: list[FilteredItem], cfg: dict, stats: dict | None = None) -> list[FilteredItem]:
     """
     Merge duplicate items. Survivors gain duplicate_count, duplicate_source_names,
     duplicate_item_ids provenance. Removed duplicates do not appear in output.
     Input must be pre-filtered (no dropped items).
+
+    If `stats` is given, records `publisher_over_aggregator` — merges where a
+    body-capable duplicate displaced a lower-category one (the Phase 3 payoff).
     """
     fuzzy_threshold = float(cfg.get("fuzzy_threshold", 0.85))
     dedup_across_regions = bool(cfg.get("dedup_across_regions", False))
 
     if dedup_across_regions:
-        survivors = _run_two_pass(items, fuzzy_threshold)
+        survivors = _run_two_pass(items, fuzzy_threshold, stats)
     else:
         by_region: dict[str, list[FilteredItem]] = {}
         for item in items:
@@ -42,7 +45,7 @@ def deduplicate(items: list[FilteredItem], cfg: dict) -> list[FilteredItem]:
 
         survivors = []
         for group in by_region.values():
-            survivors.extend(_run_two_pass(group, fuzzy_threshold))
+            survivors.extend(_run_two_pass(group, fuzzy_threshold, stats))
 
     logger.info(
         "dedup complete",
@@ -51,13 +54,23 @@ def deduplicate(items: list[FilteredItem], cfg: dict) -> list[FilteredItem]:
     return survivors
 
 
-def _run_two_pass(items: list[FilteredItem], fuzzy_threshold: float) -> list[FilteredItem]:
-    survivors = _pass1_exact_url(items)
-    survivors = _pass2_fuzzy_title(survivors, fuzzy_threshold)
+def _run_two_pass(
+    items: list[FilteredItem], fuzzy_threshold: float, stats: dict | None = None
+) -> list[FilteredItem]:
+    survivors = _pass1_exact_url(items, stats)
+    survivors = _pass2_fuzzy_title(survivors, fuzzy_threshold, stats)
     return survivors
 
 
-def _pass1_exact_url(items: list[FilteredItem]) -> list[FilteredItem]:
+def _record_merge(stats: dict | None, winner: FilteredItem, loser: FilteredItem) -> None:
+    """Count the Phase 3 payoff: a publisher duplicate displacing an aggregator one."""
+    if stats is None:
+        return
+    if category_for(winner.trust_tier) == "publisher" and category_for(loser.trust_tier) == "aggregator":
+        stats["publisher_over_aggregator"] = stats.get("publisher_over_aggregator", 0) + 1
+
+
+def _pass1_exact_url(items: list[FilteredItem], stats: dict | None = None) -> list[FilteredItem]:
     """Merge items with identical canonical_url (or url when canonical is None)."""
     seen: dict[str, FilteredItem] = {}
     for item in items:
@@ -67,11 +80,14 @@ def _pass1_exact_url(items: list[FilteredItem]) -> list[FilteredItem]:
         else:
             winner, loser = _pick_winner(seen[key], item)
             logger.debug("exact-url merge", extra={"kept": winner.id, "merged": loser.id})
+            _record_merge(stats, winner, loser)
             seen[key] = _merge(winner, loser, "exact_url")
     return list(seen.values())
 
 
-def _pass2_fuzzy_title(items: list[FilteredItem], threshold: float) -> list[FilteredItem]:
+def _pass2_fuzzy_title(
+    items: list[FilteredItem], threshold: float, stats: dict | None = None
+) -> list[FilteredItem]:
     """Merge items with similar titles (case-insensitive SequenceMatcher ratio >= threshold)."""
     survivors: list[FilteredItem] = []
     merged_ids: set[str] = set()
@@ -92,6 +108,7 @@ def _pass2_fuzzy_title(items: list[FilteredItem], threshold: float) -> list[Filt
                     "fuzzy-title merge",
                     extra={"kept": winner.id, "merged": loser.id, "similarity": round(score, 3)},
                 )
+                _record_merge(stats, winner, loser)
                 merged_ids.add(loser.id)
                 if winner.id != current.id:
                     # other became winner — it will appear in the outer loop; skip it there
