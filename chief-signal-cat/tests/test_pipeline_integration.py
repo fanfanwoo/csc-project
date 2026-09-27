@@ -3,7 +3,7 @@ Full pipeline integration test using fixture data and mocked external calls
 (Gemini API, SMTP).
 """
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -12,7 +12,13 @@ import pytest
 FIXTURES = Path(__file__).parent / "fixtures"
 NOW = datetime.now(timezone.utc)
 
-SAMPLE_RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+
+def _rfc822(days_ago: int) -> str:
+    """Recent pubDate relative to now, so the age filter never rots these fixtures."""
+    return (NOW - timedelta(days=days_ago)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+
+SAMPLE_RSS_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
     <title>ASIC Media</title>
@@ -20,13 +26,13 @@ SAMPLE_RSS_XML = """<?xml version="1.0" encoding="UTF-8"?>
       <title>ASIC lending update</title>
       <link>https://asic.gov.au/1</link>
       <description>New rules.</description>
-      <pubDate>Mon, 01 Jun 2026 08:00:00 GMT</pubDate>
+      <pubDate>{_rfc822(2)}</pubDate>
     </item>
     <item>
       <title>ASIC consumer credit review</title>
       <link>https://asic.gov.au/2</link>
       <description>Review announced.</description>
-      <pubDate>Tue, 02 Jun 2026 08:00:00 GMT</pubDate>
+      <pubDate>{_rfc822(1)}</pubDate>
     </item>
   </channel>
 </rss>"""

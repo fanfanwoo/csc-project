@@ -1,3 +1,4 @@
+import argparse
 import uuid
 from datetime import datetime
 
@@ -20,7 +21,7 @@ from csc.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-def run_pipeline() -> RunLog:
+def run_pipeline(dry_run: bool = False) -> RunLog:
     run_id = str(uuid.uuid4())
     started_at = datetime.utcnow()
     log = RunLog(run_id=run_id, started_at=started_at, status="started")
@@ -83,7 +84,13 @@ def run_pipeline() -> RunLog:
         brief.run_id = run_id
         brief_path = save_brief(brief)
         logger.info("brief saved", extra={"path": str(brief_path)})
-        send_email(brief, cfg["email"])
+        if dry_run:
+            logger.info(
+                "dry-run: email send skipped",
+                extra={"run_id": run_id, "recipients": cfg["email"].get("recipients", [])},
+            )
+        else:
+            send_email(brief, cfg["email"])
 
         log.status = "completed"
     except Exception as exc:
@@ -100,4 +107,11 @@ def run_pipeline() -> RunLog:
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    parser = argparse.ArgumentParser(description="Run the Chief Signal Cat pipeline.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run the full pipeline but skip sending email (still fetches, classifies, saves brief).",
+    )
+    args = parser.parse_args()
+    run_pipeline(dry_run=args.dry_run)
