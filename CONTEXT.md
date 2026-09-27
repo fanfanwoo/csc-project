@@ -125,13 +125,13 @@ count with `last exit code = 1` means it fires but fails; read `logs/csc.schedul
 
 **Root cause of the 2026-07-04 → 09-27 outage.** The job was loaded and fired daily
 (85 runs), but the plist pinned `/usr/local/bin/python3` (python.org 3.10, universal
-binary). Its global `pydantic_core` wheel is **x86_64-only**. Before the 2026-07-04
-reboot launchd happened to run that python as x86_64; after it, launchd started it as
-**arm64**, and every run died importing `pydantic_core` (`incompatible architecture`)
-via `google.genai`. The crash is at *import* time — before `run_once()` — so neither the
-retry nor the scheduler's failure-alert ran: 85 silent failures. `install.sh`'s own
-import check had passed because it ran in an interactive shell with the same x86_64
-behaviour.
+binary). Its global `pydantic_core` wheel is **x86_64-only** (installed 2026-05-31).
+Runs succeeded through 2026-07-01; after the 2026-07-04 reboot launchd started the
+python as **arm64**, and every run died importing `pydantic_core` (`incompatible
+architecture`) via `google.genai`. *Why* it ran as x86_64 before the reboot is not
+established — the evidence is only the unchanged wheel, the last good run, and the
+reboot date. The crash is at *import* time — before `run_once()` — so neither the
+retry nor the scheduler's failure-alert ran: 85 silent failures.
 
 **Interpreter decision.** The pipeline runs from the repo venv, not a global python:
 `install.sh` picks `$CSC_PYTHON` → `chief-signal-cat/.venv/bin/python` → `python3` on
