@@ -34,6 +34,7 @@ pipeline table below.
 - Day 1 (deterministic MVP) and Day 2 **v1a** (evidence labelling + verify gate) shipped and **merged to `main`**.
 - **v1b complete and merged to `main`**: Phase 0 (official full-body exemption, ADR-0002) and Phases 1–3 (Australian Broker publisher source + `enrich_fetch` + body-capable dedup, ADR-0003). **232 tests passing.**
 - **Scheduler outage 2026-07-04 → 2026-09-27** (fixed on `fix/scheduler-and-hygiene`, PR #12): the daily job fired but crashed at import every day; no brief, no alert. Root cause and the fixes are under **Scheduling** below. 278 tests on that branch.
+- Australian Broker is Atom; `rss_connector` reads only `<description>`/`<summary>`, so every AB body is empty and 30/30 drop as `no_keyword_match` (dry run 2026-09-27). Fix on branch `fix/atom-content`.
 - Live-validated 2026-06-26: 100 fetched (+30 Australian Broker), publisher item fetched to `full_body` (`enrichment_status=success`) and reached both brief and queue; Phase 0 dropped held to 1. Known: classifier occasionally emits `domain="regulatory"` (not in `VALID_DOMAINS`) → caught as `schema_validation_error`, item dropped — pre-existing, not v1b.
 
 ## The pipeline
@@ -156,7 +157,11 @@ alert down with the pipeline. SMTP only (SendGrid isn't implemented anywhere). W
 - **Accumulate runs**, then read the two watch
   tools after a batch. Decisions they inform: is Australian Broker delivering on-domain
   car-finance depth (else add a dedicated auto-finance source, body-checked first); is
-  title-only filtering dropping too much (publisher_dropped_filter); is enrich reliable.
+  enrich reliable.
+- **Land `fix/atom-content`**; dry-run before/after drop counts.
+- **Filter changes one at a time:** content fix → plural handling → vocabulary. Measure between each.
+- **Corroboration trigger is not evaluable** until the content fix lands and ~2 weeks of clean daily runs accumulate.
+- **Fix deterministic defects before building the evidence-sufficiency loop**, so the loop's `fetch_full_text` isn't masking a connector bug.
 - **Corroboration agent** (the real Day 2 agentic milestone): v1b satisfies its precondition (a second independent, fetchable source). Build it only when live runs show the queue repeatedly holding single-source signals a second source would resolve — not because v1b made it possible.
 - **Relative inference-leap measure** to replace the dropped char-count rule — now unblocked by publisher body data; needs several runs to calibrate.
 - **Day 3:** integrate CDC (internal) + CSC (external) into a unified intelligence layer.
