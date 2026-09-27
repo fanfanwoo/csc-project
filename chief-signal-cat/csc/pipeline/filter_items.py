@@ -21,7 +21,8 @@ def filter_items(items: list[RawItem], cfg: dict, sources: list[dict] | None = N
     `sources` (the sources.yaml list) may give a source its own `keyword_allowlist`.
     An item's keyword match is the global allowlist plus its source's list, matched
     the same way (case-insensitive, whole words; plurals are listed explicitly).
-    Other sources are unaffected by a source's list.
+    Other sources are unaffected by a source's list. `keyword_matches` records which
+    list each term came from ("global" or "source:<name>").
     """
     target_regions = set(cfg.get("target_regions", ["AU"]))
     max_age_days = cfg.get("max_age_days", 7)
@@ -51,8 +52,13 @@ def filter_items(items: list[RawItem], cfg: dict, sources: list[dict] | None = N
     result: list[FilteredItem] = []
     for raw in items:
         text = (raw.title + " " + raw.body).lower()
-        patterns = allowlist_patterns + source_allowlist_patterns.get(raw.source_name, [])
-        matched = [orig for orig, pat in patterns if pat.search(text)]
+        keyword_matches = [{"list": "global", "term": orig} for orig, pat in allowlist_patterns if pat.search(text)]
+        keyword_matches += [
+            {"list": f"source:{raw.source_name}", "term": orig}
+            for orig, pat in source_allowlist_patterns.get(raw.source_name, [])
+            if pat.search(text)
+        ]
+        matched = list(dict.fromkeys(m["term"] for m in keyword_matches))
 
         filter_status, filter_reason = _get_filter_outcome(
             raw,
@@ -79,6 +85,7 @@ def filter_items(items: list[RawItem], cfg: dict, sources: list[dict] | None = N
             filter_status=filter_status,
             filter_reason=filter_reason,
             matched_keywords=matched,
+            keyword_matches=keyword_matches,
             excluded_keywords=excluded,
         )
         if filter_status == "dropped":

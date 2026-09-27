@@ -79,6 +79,8 @@ class FilteredItem(RawItem):
     filter_status: str = "kept"          # "kept" | "dropped" | "keep_with_warning"
     filter_reason: str | None = None     # None when kept cleanly; reason code otherwise
     matched_keywords: list[str] = field(default_factory=list)
+    # Which allowlist each match came from: {"list": "global" | "source:<name>", "term": str}
+    keyword_matches: list[dict] = field(default_factory=list)
     excluded_keywords: list[str] = field(default_factory=list)
 
     # Deduplication provenance — populated by Deduplicate module
