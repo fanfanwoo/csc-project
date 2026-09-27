@@ -5,10 +5,11 @@
   <key>Label</key>
   <string>com.chiefsignalcat.heartbeat</string>
 
-  <!-- Emails alert_address if no file in data/briefs/ is newer than 36h. -->
+  <!-- Emails alert_address if no file in data/briefs/ is newer than 36h.
+       Stdlib-only, run by the system python so a broken venv can't silence it. -->
   <key>ProgramArguments</key>
   <array>
-    <string>__PYTHON__</string>
+    <string>__HEARTBEAT_PYTHON__</string>
     <string>-m</string>
     <string>csc.tools.check_heartbeat</string>
   </array>
