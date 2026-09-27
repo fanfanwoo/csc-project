@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chiefsignalcat.heartbeat</string>
+
+  <!-- Emails alert_address if no file in data/briefs/ is newer than 36h. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>-m</string>
+    <string>csc.tools.check_heartbeat</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__WORKDIR__</string>
+
+  <!-- Daily at 12:00 local — well after the 07:00 pipeline, even on a late wake. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>12</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>__WORKDIR__/logs/csc.heartbeat.log</string>
+  <key>StandardErrorPath</key>
+  <string>__WORKDIR__/logs/csc.heartbeat.log</string>
+</dict>
+</plist>

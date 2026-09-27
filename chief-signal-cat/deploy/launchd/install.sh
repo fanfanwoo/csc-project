@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Install + load the CSC daily launchd agent (07:00 local).
+# Install + load the CSC launchd agents: daily pipeline (07:00) + heartbeat (12:00).
 # Generates the real plist from the template using this machine's python + repo path,
 # then (re-)bootstraps it. Re-run safely — it reloads. Activates daily autonomous runs.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKDIR="$(cd "$HERE/../.." && pwd)"          # chief-signal-cat/
-LABEL="com.chiefsignalcat.daily"
-PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LABELS=(com.chiefsignalcat.daily com.chiefsignalcat.heartbeat)
 DOMAIN="gui/$(id -u)"
 
 # Interpreter choice: $CSC_PYTHON > repo .venv > python3 on PATH.
@@ -28,22 +27,25 @@ ARCH_PREFIX=()
 if [[ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" == "1" ]]; then
   ARCH_PREFIX=(arch -arm64)
 fi
-if ! ${ARCH_PREFIX[@]+"${ARCH_PREFIX[@]}"} "$PYTHON" -c 'import csc.pipeline.scheduler' 2>/dev/null; then
-  echo "ERROR: '$PYTHON' cannot import csc.pipeline.scheduler natively." >&2
+if ! ${ARCH_PREFIX[@]+"${ARCH_PREFIX[@]}"} "$PYTHON" -c 'import csc.pipeline.scheduler, csc.tools.check_heartbeat' 2>/dev/null; then
+  echo "ERROR: '$PYTHON' cannot import csc.pipeline.scheduler / csc.tools.check_heartbeat natively." >&2
   echo "       Create the venv (python3 -m venv .venv && .venv/bin/pip install -r requirements.txt) or set CSC_PYTHON." >&2
   exit 1
 fi
 
 mkdir -p "$WORKDIR/logs" "$HOME/Library/LaunchAgents"
-sed -e "s|__PYTHON__|$PYTHON|g" -e "s|__WORKDIR__|$WORKDIR|g" \
-  "$HERE/$LABEL.plist.template" > "$PLIST"
+for LABEL in "${LABELS[@]}"; do
+  PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+  sed -e "s|__PYTHON__|$PYTHON|g" -e "s|__WORKDIR__|$WORKDIR|g" \
+    "$HERE/$LABEL.plist.template" > "$PLIST"
+  launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "$DOMAIN" "$PLIST"
+  echo "Loaded $LABEL"
+done
 
-launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-launchctl bootstrap "$DOMAIN" "$PLIST"
-
-echo "Loaded $LABEL — daily 07:00 local."
-echo "  python : $PYTHON"
-echo "  workdir: $WORKDIR"
-echo "  logs   : $WORKDIR/logs/csc.scheduler.log"
-echo "Verify : launchctl print $DOMAIN/$LABEL"
-echo "Test now: launchctl kickstart $DOMAIN/$LABEL   (runs immediately — sends a real email)"
+echo "  schedule: pipeline daily 07:00, heartbeat daily 12:00 (local)"
+echo "  python  : $PYTHON"
+echo "  workdir : $WORKDIR"
+echo "  logs    : $WORKDIR/logs/csc.scheduler.log, csc.heartbeat.log"
+echo "Verify  : launchctl print $DOMAIN/com.chiefsignalcat.daily"
+echo "Test now: launchctl kickstart $DOMAIN/com.chiefsignalcat.daily   (runs immediately — sends a real email)"
