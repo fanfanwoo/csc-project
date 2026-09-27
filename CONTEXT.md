@@ -34,7 +34,7 @@ pipeline table below.
 - Day 1 (deterministic MVP) and Day 2 **v1a** (evidence labelling + verify gate) shipped and **merged to `main`**.
 - **v1b complete and merged to `main`**: Phase 0 (official full-body exemption, ADR-0002) and Phases 1–3 (Australian Broker publisher source + `enrich_fetch` + body-capable dedup, ADR-0003). **232 tests passing.**
 - **Scheduler outage 2026-07-04 → 2026-09-27** (fixed on `fix/scheduler-and-hygiene`, PR #12): the daily job fired but crashed at import every day; no brief, no alert. Root cause and the fixes are under **Scheduling** below. 278 tests on that branch.
-- Australian Broker is Atom; `rss_connector` reads only `<description>`/`<summary>`, so every AB body is empty and 30/30 drop as `no_keyword_match` (dry run 2026-09-27). Fix on branch `fix/atom-content`.
+- Australian Broker is Atom; `rss_connector` reads only `<description>`/`<summary>`, so every AB body is empty and 30/30 drop as `no_keyword_match` (dry run 2026-09-27) (still 30/30 with the fix — vocabulary, not only the body). Fix on branch `fix/atom-content`.
 - Live-validated 2026-06-26: 100 fetched (+30 Australian Broker), publisher item fetched to `full_body` (`enrichment_status=success`) and reached both brief and queue; Phase 0 dropped held to 1. Known: classifier occasionally emits `domain="regulatory"` (not in `VALID_DOMAINS`) → caught as `schema_validation_error`, item dropped — pre-existing, not v1b.
 
 ## The pipeline
