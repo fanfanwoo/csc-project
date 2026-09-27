@@ -12,11 +12,16 @@ def _word_boundary_pattern(keyword: str) -> re.Pattern:
     return re.compile(r"\b" + re.escape(keyword) + r"\b")
 
 
-def filter_items(items: list[RawItem], cfg: dict) -> list[FilteredItem]:
+def filter_items(items: list[RawItem], cfg: dict, sources: list[dict] | None = None) -> list[FilteredItem]:
     """
     Apply deterministic filter chain. No LLM calls.
     Returns all items — kept and dropped — with filter_status and filter_reason set.
     Caller splits on filter_status to decide what to persist vs pass forward.
+
+    `sources` (the sources.yaml list) may give a source its own `keyword_allowlist`.
+    An item's keyword match is the global allowlist plus its source's list, matched
+    the same way (case-insensitive, whole words; plurals are listed explicitly).
+    Other sources are unaffected by a source's list.
     """
     target_regions = set(cfg.get("target_regions", ["AU"]))
     max_age_days = cfg.get("max_age_days", 7)
@@ -27,6 +32,11 @@ def filter_items(items: list[RawItem], cfg: dict) -> list[FilteredItem]:
         (orig, _word_boundary_pattern(orig.lower()))
         for orig in keyword_allowlist_orig
     ]
+    source_allowlist_patterns = {
+        s["name"]: [(orig, _word_boundary_pattern(orig.lower())) for orig in s.get("keyword_allowlist", [])]
+        for s in (sources or [])
+        if s.get("keyword_allowlist")
+    }
     blocklist_patterns = [
         _word_boundary_pattern(k.lower())
         for k in cfg.get("keyword_blocklist", [])
@@ -41,7 +51,8 @@ def filter_items(items: list[RawItem], cfg: dict) -> list[FilteredItem]:
     result: list[FilteredItem] = []
     for raw in items:
         text = (raw.title + " " + raw.body).lower()
-        matched = [orig for orig, pat in allowlist_patterns if pat.search(text)]
+        patterns = allowlist_patterns + source_allowlist_patterns.get(raw.source_name, [])
+        matched = [orig for orig, pat in patterns if pat.search(text)]
 
         filter_status, filter_reason = _get_filter_outcome(
             raw,

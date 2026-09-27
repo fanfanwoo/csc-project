@@ -33,7 +33,7 @@ def run_pipeline(dry_run: bool = False) -> RunLog:
         raw = fetch_all_sources(cfg["sources"])
         log.items_fetched = len(raw)
 
-        filtered_all = filter_items(raw, cfg["filter"])
+        filtered_all = filter_items(raw, cfg["filter"], cfg["sources"])
         filtered = [i for i in filtered_all if i.filter_status != "dropped"]
         log.items_filtered = len(filtered)
 
