@@ -159,7 +159,7 @@ alert down with the pipeline. SMTP only (SendGrid isn't implemented anywhere). W
   car-finance depth (else add a dedicated auto-finance source, body-checked first); is
   enrich reliable.
 - **Land `fix/atom-content`**; dry-run before/after drop counts.
-- **Filter changes one at a time:** content fix → plural handling → vocabulary. Measure between each.
+- **Filter changes one at a time:** content fix → vocabulary (incl. plurals). Measure between each.
 - **Corroboration trigger is not evaluable** until the content fix lands and ~2 weeks of clean daily runs accumulate.
 - **Fix deterministic defects before building the evidence-sufficiency loop**, so the loop's `fetch_full_text` isn't masking a connector bug.
 - **Corroboration agent** (the real Day 2 agentic milestone): v1b satisfies its precondition (a second independent, fetchable source). Build it only when live runs show the queue repeatedly holding single-source signals a second source would resolve — not because v1b made it possible.
