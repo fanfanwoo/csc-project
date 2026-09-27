@@ -5,7 +5,7 @@ system **as it currently is** — keep it current. History lives elsewhere: deci
 `docs/adr/`, design intent in `docs/architectures/`, session logs in the session
 summaries. When this doc and the code disagree, the **code wins** — fix this doc.
 
-_Last updated: 2026-06-26 (Day 2 v1b)._
+_Last updated: 2026-09-27 (scheduler fix, heartbeat, test-data guard)._
 
 ## What CSC is
 
@@ -33,6 +33,9 @@ pipeline table below.
 
 - Day 1 (deterministic MVP) and Day 2 **v1a** (evidence labelling + verify gate) shipped and **merged to `main`**.
 - **v1b complete and merged to `main`**: Phase 0 (official full-body exemption, ADR-0002) and Phases 1–3 (Australian Broker publisher source + `enrich_fetch` + body-capable dedup, ADR-0003). **232 tests passing.**
+- **Scheduler outage 2026-07-04 → 2026-09-27** (fixed on `fix/scheduler-and-hygiene`, PR #12): the daily job fired but crashed at import every day; no brief, no alert. Root cause and the fixes are under **Scheduling** below. 278 tests on that branch.
+- Australian Broker is Atom; `rss_connector` reads only `<description>`/`<summary>`, so every AB body is empty and 30/30 drop as `no_keyword_match` (dry run 2026-09-27) (still 30/30 with the fix — vocabulary, not only the body). Fix on branch `fix/atom-content`.
+- Google News AU items are 34–3583 days old (median 320) and all drop as `stale`, so the aggregator contributes nothing (dry run 2026-09-27, 50/50). Cause not yet investigated.
 - Live-validated 2026-06-26: 100 fetched (+30 Australian Broker), publisher item fetched to `full_body` (`enrichment_status=success`) and reached both brief and queue; Phase 0 dropped held to 1. Known: classifier occasionally emits `domain="regulatory"` (not in `VALID_DOMAINS`) → caught as `schema_validation_error`, item dropped — pre-existing, not v1b.
 
 ## The pipeline
@@ -97,27 +100,69 @@ Full rationale in `docs/adr/0001…`, `docs/adr/0002…`.
 - **Config** (`chief-signal-cat/config/`): `pipeline.yaml` (processing logic + thresholds), `sources.yaml` (source defs + connector dispatch), `email.yaml` (credentials only).
 - **Storage** (`csc/storage/`): JSONL is the active store (`jsonl_store.py`) — briefs to `data/briefs/{run_id}.md`, review queue to `data/review/{run_id}.jsonl`, run logs to `data/logs/`. `supabase_store.py` exists as an alternative backend.
 - **LLM:** Google Gemini `gemini-2.5-flash` via `google-genai` SDK, key `GOOGLE_API_KEY`. Prototyped in AI Studio (same model family).
-- **Tests:** pytest, fixture-based. `python3 -m pytest -q` (Mac: `python3` / `pip3`).
+- **Tests:** pytest, fixture-based. Run with the venv: `.venv/bin/python -m pytest -q` from `chief-signal-cat/`.
+- **Test-data guard** (`tests/conftest.py`, autouse): every test gets `jsonl_store._DATA_DIR` pointed at `tmp_path`, and the real `data/` tree is snapshotted (size + mtime) before and after — any added/removed/modified path fails the test with the list. Why: `test_classify_failure_accounting` ran `run_pipeline()` with `save_brief`/`append_run_log` patched but not `append_items`, so fixture items leaked into `data/review/` (2026-06-24 → 06-26) and showed up as fake recurrence in `review_recurrence`. The 7 leaked files were moved (not deleted) to `data/review/_quarantine/`; the tools glob `data/review/*.jsonl` non-recursively, so they're excluded. New tests that touch storage get isolation for free — don't write to `data/` by absolute path.
 
 ## Watching across runs (tools)
 
 - **Run metrics** — each run writes `RunLog.metrics` (`csc/pipeline/run_metrics.py`): publisher_fetched/dropped_filter, enrich success/failed/excerpt, held_headline_only_high_impact, official_released, dedup_publisher_over_aggregator. Read newest-first with `python3 -m csc.tools.run_metrics_report`.
-- **Corroboration trigger** — `python3 -m csc.tools.review_recurrence` clusters held single-source signals by **exact URL** (never fuzzy title) and flags non-official recurrences. Trigger = on-domain non-official signal recurring across runs.
+- **Corroboration trigger** — `python3 -m csc.tools.review_recurrence` clusters held single-source signals by **exact URL** (never fuzzy title) and flags non-official recurrences. Recurrence is counted in **distinct calendar days** (local date of `fetched_at`), with run count shown alongside — same-day re-runs don't inflate it. Trigger = on-domain non-official signal recurring across days (`--min-days`, default 2).
+- **Heartbeat** — `python3 -m csc.tools.check_heartbeat` exits 1 and emails `email.alert_address` when no file in `data/briefs/` is newer than 36h. Independent of the pipeline — stdlib-only, run by `/usr/bin/python3` in launchd — so it catches import-time crashes the scheduler's own alert can't.
 
 ## Scheduling
 
 `csc.pipeline.scheduler` runs the pipeline once with retry + failure-alert email.
-Daily activation via macOS launchd: `deploy/launchd/` has the plist template +
+Daily activation via macOS launchd: `deploy/launchd/` has two plist templates +
 `install.sh` / `uninstall.sh` + README. **Not loaded by default** — run
-`bash deploy/launchd/install.sh` from `chief-signal-cat/` to activate (daily 07:00
-local; incurs daily Gemini cost + email; laptop must be awake).
+`bash deploy/launchd/install.sh` from `chief-signal-cat/` (re-run safe; uses
+`launchctl bootout`/`bootstrap`). Two agents, both currently loaded on the dev Mac:
+
+| Agent | When | Interpreter | Does |
+|---|---|---|---|
+| `com.chiefsignalcat.daily` | 07:00 local | `chief-signal-cat/.venv/bin/python` | full pipeline; daily Gemini cost + email; laptop must be awake |
+| `com.chiefsignalcat.heartbeat` | 12:00 local | `/usr/bin/python3` | `csc.tools.check_heartbeat`: alert if no brief newer than 36h |
+
+Check with `launchctl print gui/$(id -u)/com.chiefsignalcat.daily` — a growing `runs`
+count with `last exit code = 1` means it fires but fails; read `logs/csc.scheduler.log`.
+
+**Root cause of the 2026-07-04 → 09-27 outage.** The job was loaded and fired daily
+(85 runs), but the plist pinned `/usr/local/bin/python3` (python.org 3.10, universal
+binary). Its global `pydantic_core` wheel is **x86_64-only** (installed 2026-05-31).
+Runs succeeded through 2026-07-01; after the 2026-07-04 reboot launchd started the
+python as **arm64**, and every run died importing `pydantic_core` (`incompatible
+architecture`) via `google.genai`. *Why* it ran as x86_64 before the reboot is not
+established — the evidence is only the unchanged wheel, the last good run, and the
+reboot date. The crash is at *import* time — before `run_once()` — so neither the
+retry nor the scheduler's failure-alert ran: 85 silent failures.
+
+**Interpreter decision.** The pipeline runs from the repo venv, not a global python:
+`install.sh` picks `$CSC_PYTHON` → `chief-signal-cat/.venv/bin/python` → `python3` on
+PATH, and verifies `import csc.pipeline.scheduler` under `arch -arm64` (how launchd
+runs it on Apple Silicon) before installing. Why: the venv's wheels are installed for
+the interpreter that runs them and are what `pytest` exercises; the global site-packages
+is shared, drifts, and can hold wrong-arch wheels. If the venv is rebuilt or moved,
+re-run `install.sh` (the generated plist holds absolute paths and is not committed).
+
+**Heartbeat — why a second agent.** The scheduler can only alert on failures it
+survives to see. The heartbeat checks the *outcome* (newest mtime in `data/briefs/`)
+instead, so it catches import crashes, a job launchd never starts, or a laptop that
+slept through the week. It is deliberately **stdlib-only** (no PyYAML/pydantic: it reads
+`config/email.yaml` scalars and `.env` itself, sends over `smtplib`) and runs on
+`/usr/bin/python3` (override `CSC_HEARTBEAT_PYTHON`), so a broken venv can't take the
+alert down with the pipeline. SMTP only (SendGrid isn't implemented anywhere). With a
+36h window and a noon check, the first alert fires the day *after* a missed 07:00 run.
 
 ## What's next
 
-- **Accumulate runs** (activate the launchd schedule above), then read the two watch
+- **Confirm the first venv-run** (next 07:00 after the fix): `launchctl print` shows `last exit code = 0` and a new brief in `data/briefs/`.
+- **Accumulate runs**, then read the two watch
   tools after a batch. Decisions they inform: is Australian Broker delivering on-domain
   car-finance depth (else add a dedicated auto-finance source, body-checked first); is
-  title-only filtering dropping too much (publisher_dropped_filter); is enrich reliable.
+  enrich reliable.
+- **Land `fix/atom-content`**; dry-run before/after drop counts.
+- **Filter changes one at a time:** content fix → vocabulary (incl. plurals). Measure between each.
+- **Corroboration trigger is not evaluable** until the content fix lands and ~2 weeks of clean daily runs accumulate.
+- **Fix deterministic defects before building the evidence-sufficiency loop**, so the loop's `fetch_full_text` isn't masking a connector bug.
 - **Corroboration agent** (the real Day 2 agentic milestone): v1b satisfies its precondition (a second independent, fetchable source). Build it only when live runs show the queue repeatedly holding single-source signals a second source would resolve — not because v1b made it possible.
 - **Relative inference-leap measure** to replace the dropped char-count rule — now unblocked by publisher body data; needs several runs to calibrate.
 - **Day 3:** integrate CDC (internal) + CSC (external) into a unified intelligence layer.
