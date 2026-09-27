@@ -20,10 +20,15 @@ Telling near-identical-but-distinct events apart is the corroboration agent's ha
 problem (its judge-match step) — it must not be smuggled into this watch. So recurrence
 here means literally the same article held run after run.
 
+Recurrence is counted in **distinct calendar days**, not runs: a manual re-run or a
+retry on the same day re-holds the same article without it having persisted any
+longer. The day is the item's fetched_at in local time (the schedule is local-time);
+both counts are shown, and --min-days sets the threshold.
+
 Read-only. No pipeline state is touched.
 
-    python3 -m csc.tools.review_recurrence              # default data/review, min 2 runs
-    python3 -m csc.tools.review_recurrence --min-runs 3
+    python3 -m csc.tools.review_recurrence              # default data/review, min 2 days
+    python3 -m csc.tools.review_recurrence --min-days 3
     python3 -m csc.tools.review_recurrence --data-dir /path/to/review
 """
 
@@ -31,6 +36,7 @@ import argparse
 import glob
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, tzinfo
 from pathlib import Path
 
 # Hold reasons a second source could resolve. sensitive_domain is excluded (it marks,
@@ -43,6 +49,7 @@ class Cluster:
     key: str                                  # canonical_url (or url) — the exact identity
     example_title: str                        # a human-readable title for display only
     run_ids: set[str] = field(default_factory=set)
+    days: set[str] = field(default_factory=set)       # ISO dates (local) the signal was held on
     reasons: set[str] = field(default_factory=set)
     sources: set[str] = field(default_factory=set)
     categories: set[str] = field(default_factory=set)   # evidence_category values seen
@@ -50,6 +57,10 @@ class Cluster:
     @property
     def run_count(self) -> int:
         return len(self.run_ids)
+
+    @property
+    def day_count(self) -> int:
+        return len(self.days)
 
     @property
     def is_corroboration_candidate(self) -> bool:
@@ -63,6 +74,19 @@ def signal_key(item: dict) -> str:
     """Exact identity of a held signal: canonical_url, falling back to url. Never the
     title — different events can share a headline template."""
     return item.get("canonical_url") or item.get("url") or ""
+
+
+def held_day(item: dict, tz: tzinfo | None = None) -> str | None:
+    """Calendar day (ISO date) the item was held on: its fetched_at converted to tz
+    (local time when None). None when fetched_at is missing or unparseable."""
+    raw = item.get("fetched_at")
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
+    return dt.astimezone(tz).date().isoformat()
 
 
 def _held_single_source_items(path: str) -> list[dict]:
@@ -79,7 +103,7 @@ def _held_single_source_items(path: str) -> list[dict]:
     return items
 
 
-def build_clusters(run_files: dict[str, list[dict]]) -> list[Cluster]:
+def build_clusters(run_files: dict[str, list[dict]], tz: tzinfo | None = None) -> list[Cluster]:
     """Cluster held single-source items across runs by exact URL.
 
     `run_files` maps run_id -> list of held item dicts. An item joins the cluster
@@ -100,6 +124,9 @@ def build_clusters(run_files: dict[str, list[dict]]) -> list[Cluster]:
                 cluster = Cluster(key=key, example_title=item.get("title", ""))
                 clusters[key] = cluster
             cluster.run_ids.add(run_id)
+            day = held_day(item, tz)
+            if day:
+                cluster.days.add(day)
             cluster.reasons.update(item_reasons)
             if item.get("source_name"):
                 cluster.sources.add(item["source_name"])
@@ -117,22 +144,26 @@ def load_runs(data_dir: str) -> dict[str, list[dict]]:
     return runs
 
 
-def recurring(clusters: list[Cluster], min_runs: int) -> list[Cluster]:
-    out = [c for c in clusters if c.run_count >= min_runs]
-    out.sort(key=lambda c: c.run_count, reverse=True)
+def recurring(clusters: list[Cluster], min_days: int) -> list[Cluster]:
+    out = [c for c in clusters if c.day_count >= min_days]
+    out.sort(key=lambda c: (c.day_count, c.run_count), reverse=True)
     return out
 
 
-def format_report(runs: dict[str, list[dict]], clusters: list[Cluster], min_runs: int) -> str:
+def _span(c: Cluster) -> str:
+    return f"[{c.day_count} days / {c.run_count} runs]"
+
+
+def format_report(runs: dict[str, list[dict]], clusters: list[Cluster], min_days: int) -> str:
     held_total = sum(len(v) for v in runs.values())
-    recurrences = recurring(clusters, min_runs)
+    recurrences = recurring(clusters, min_days)
     candidates = [c for c in recurrences if c.is_corroboration_candidate]
     official_only = [c for c in recurrences if not c.is_corroboration_candidate]
 
     lines = [
         "Review-queue recurrence — corroboration-agent trigger watch",
         f"  runs scanned: {len(runs)} | single-source holds: {held_total} | distinct signals: {len(clusters)}",
-        f"  recurring in >= {min_runs} runs: {len(recurrences)} "
+        f"  recurring on >= {min_days} distinct days: {len(recurrences)} "
         f"({len(candidates)} corroboration candidates, {len(official_only)} official-only)",
         "",
     ]
@@ -141,8 +172,9 @@ def format_report(runs: dict[str, list[dict]], clusters: list[Cluster], min_runs
         lines.append("  >> TRIGGER CANDIDATES — non-official single-source signals held repeatedly")
         lines.append("     (a second independent source would likely have resolved these):")
         for c in candidates:
-            lines.append(f"    [{c.run_count} runs] {c.example_title!r}")
+            lines.append(f"    {_span(c)} {c.example_title!r}")
             lines.append(f"             reasons={sorted(c.reasons)} sources={sorted(c.sources)}")
+            lines.append(f"             days={min(c.days)}..{max(c.days)}")
         lines.append("")
     else:
         lines.append("  No NON-official recurring single-source signal yet — trigger not met. Keep watching.")
@@ -152,7 +184,7 @@ def format_report(runs: dict[str, list[dict]], clusters: list[Cluster], min_runs
         lines.append("  (Ignored: official-source recurrences — ASIC is authoritative, not a")
         lines.append("   corroboration target; Phase 0 now exempts official full-body items.)")
         for c in official_only:
-            lines.append(f"    [{c.run_count} runs] {c.example_title!r}  sources={sorted(c.sources)}")
+            lines.append(f"    {_span(c)} {c.example_title!r}  sources={sorted(c.sources)}")
 
     return "\n".join(lines)
 
@@ -160,12 +192,12 @@ def format_report(runs: dict[str, list[dict]], clusters: list[Cluster], min_runs
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Review-queue recurrence report.")
     parser.add_argument("--data-dir", default="data/review", help="dir of review JSONL files")
-    parser.add_argument("--min-runs", type=int, default=2, help="recurrence threshold")
+    parser.add_argument("--min-days", type=int, default=2, help="recurrence threshold, in distinct calendar days")
     args = parser.parse_args(argv)
 
     runs = load_runs(args.data_dir)
     clusters = build_clusters(runs)
-    print(format_report(runs, clusters, args.min_runs))
+    print(format_report(runs, clusters, args.min_days))
 
 
 if __name__ == "__main__":
