@@ -103,7 +103,7 @@ Full rationale in `docs/adr/0001…`, `docs/adr/0002…`.
 
 - **Run metrics** — each run writes `RunLog.metrics` (`csc/pipeline/run_metrics.py`): publisher_fetched/dropped_filter, enrich success/failed/excerpt, held_headline_only_high_impact, official_released, dedup_publisher_over_aggregator. Read newest-first with `python3 -m csc.tools.run_metrics_report`.
 - **Corroboration trigger** — `python3 -m csc.tools.review_recurrence` clusters held single-source signals by **exact URL** (never fuzzy title) and flags non-official recurrences. Recurrence is counted in **distinct calendar days** (local date of `fetched_at`), with run count shown alongside — same-day re-runs don't inflate it. Trigger = on-domain non-official signal recurring across days (`--min-days`, default 2).
-- **Heartbeat** — `python3 -m csc.tools.check_heartbeat` exits 1 and emails `email.alert_address` when no file in `data/briefs/` is newer than 36h. Independent of the pipeline, so it catches import-time crashes the scheduler's own alert can't.
+- **Heartbeat** — `python3 -m csc.tools.check_heartbeat` exits 1 and emails `email.alert_address` when no file in `data/briefs/` is newer than 36h. Independent of the pipeline — stdlib-only, run by `/usr/bin/python3` in launchd — so it catches import-time crashes the scheduler's own alert can't.
 
 ## Scheduling
 

@@ -6,7 +6,9 @@ Two agents:
   `csc.pipeline.scheduler` (retry-once + failure-alert email built in).
 - `com.chiefsignalcat.heartbeat` — runs `csc.tools.check_heartbeat` daily at **12:00**;
   emails `alert_address` if no brief in `data/briefs/` is newer than 36h. Catches
-  failures the scheduler can't report (e.g. a crash at import time).
+  failures the scheduler can't report (e.g. a crash at import time). Stdlib-only and
+  run by `/usr/bin/python3` (override: `CSC_HEARTBEAT_PYTHON`), so a broken venv
+  can't take the alert down with the pipeline.
 
 Nothing here runs until you install it.
 
