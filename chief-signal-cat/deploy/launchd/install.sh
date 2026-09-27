@@ -1,20 +1,36 @@
 #!/usr/bin/env bash
 # Install + load the CSC daily launchd agent (07:00 local).
 # Generates the real plist from the template using this machine's python + repo path,
-# then loads it. Re-run safely — it reloads. Activates daily autonomous runs.
+# then (re-)bootstraps it. Re-run safely — it reloads. Activates daily autonomous runs.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKDIR="$(cd "$HERE/../.." && pwd)"          # chief-signal-cat/
 LABEL="com.chiefsignalcat.daily"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+DOMAIN="gui/$(id -u)"
 
-# Use the python that can import csc (same interpreter you run pytest with).
-PYTHON="$(python3 -c 'import sys; print(sys.executable)')"
+# Interpreter choice: $CSC_PYTHON > repo .venv > python3 on PATH.
+# Prefer the venv: the global python3 may carry wheels for the wrong architecture
+# (an x86_64-only pydantic_core broke every run from 2026-07-04 — launchd starts
+# universal binaries as arm64, while a Rosetta shell happily imports x86_64 wheels).
+if [[ -n "${CSC_PYTHON:-}" ]]; then
+  PYTHON="$CSC_PYTHON"
+elif [[ -x "$WORKDIR/.venv/bin/python" ]]; then
+  PYTHON="$WORKDIR/.venv/bin/python"
+else
+  PYTHON="$(python3 -c 'import sys; print(sys.executable)')"
+fi
 
 cd "$WORKDIR"
-if ! "$PYTHON" -c 'import csc.run' 2>/dev/null; then
-  echo "ERROR: '$PYTHON' cannot import csc. Activate the right venv / install deps, then re-run." >&2
+# Import the real entrypoint natively (arm64 on Apple Silicon), the way launchd will.
+ARCH_PREFIX=()
+if [[ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" == "1" ]]; then
+  ARCH_PREFIX=(arch -arm64)
+fi
+if ! ${ARCH_PREFIX[@]+"${ARCH_PREFIX[@]}"} "$PYTHON" -c 'import csc.pipeline.scheduler' 2>/dev/null; then
+  echo "ERROR: '$PYTHON' cannot import csc.pipeline.scheduler natively." >&2
+  echo "       Create the venv (python3 -m venv .venv && .venv/bin/pip install -r requirements.txt) or set CSC_PYTHON." >&2
   exit 1
 fi
 
@@ -22,12 +38,12 @@ mkdir -p "$WORKDIR/logs" "$HOME/Library/LaunchAgents"
 sed -e "s|__PYTHON__|$PYTHON|g" -e "s|__WORKDIR__|$WORKDIR|g" \
   "$HERE/$LABEL.plist.template" > "$PLIST"
 
-launchctl unload "$PLIST" 2>/dev/null || true
-launchctl load "$PLIST"
+launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+launchctl bootstrap "$DOMAIN" "$PLIST"
 
 echo "Loaded $LABEL — daily 07:00 local."
 echo "  python : $PYTHON"
 echo "  workdir: $WORKDIR"
 echo "  logs   : $WORKDIR/logs/csc.scheduler.log"
-echo "Verify : launchctl list | grep chiefsignalcat"
-echo "Test now: launchctl start $LABEL   (runs immediately — sends a real email)"
+echo "Verify : launchctl print $DOMAIN/$LABEL"
+echo "Test now: launchctl kickstart $DOMAIN/$LABEL   (runs immediately — sends a real email)"
