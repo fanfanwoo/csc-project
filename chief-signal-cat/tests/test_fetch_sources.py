@@ -5,6 +5,7 @@ All tests run without network access — HTTP is mocked.
 
 import urllib.error
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,8 @@ from csc.connectors.rss_connector import (
     validate_source_config,
 )
 from csc.schemas.items import RawItem
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 # ── Fixtures ──────────────────────────────────────────────────
 
@@ -53,8 +56,8 @@ SAMPLE_RSS = """<?xml version="1.0" encoding="UTF-8"?>
 </rss>"""
 
 # Australian Broker (v1b) — Atom. Single <link rel="alternate"> is the real article
-# URL; body lives in <content> (which the connector ignores), so body is empty at
-# fetch time and gets filled by enrich_fetch. Mirrors the live feed shape.
+# URL; <content> carries only a standfirst, which becomes the fetch-time body
+# (enrich_fetch later replaces it with the article). Mirrors the live feed shape.
 ATOM_BROKER_FEED = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Australian Broker</title>
@@ -218,11 +221,43 @@ def test_trade_press_atom_canonical_url_is_real_article_link():
     assert item.canonical_url.endswith(".aspx")
 
 
-def test_trade_press_body_empty_at_fetch_time():
-    # The connector reads <summary>, not <content>, so publisher bodies are empty at
-    # fetch time and filled later by enrich_fetch. Documents the Phase 1 watch-item.
+def test_trade_press_atom_content_becomes_body():
+    # No <summary>/<description>: the Atom <content> standfirst is the fetch-time body,
+    # HTML stripped. enrich_fetch later replaces it with the full article.
     items = _parse_rss(ATOM_BROKER_FEED, "Australian Broker", "news", "trade_press", 0.6, "AU")
-    assert items[0].body == ""
+    assert items[0].body == "Standfirst only, not the article body."
+
+
+def test_real_australian_broker_atom_entries():
+    # Verbatim entries from the live brokernews.com.au feed (2026-09-25), BOM included,
+    # decoded the way csc.connectors.http does (utf-8).
+    xml = (FIXTURES / "australian_broker_atom.xml").read_text(encoding="utf-8")
+    items = _parse_rss(xml, "Australian Broker", "news", "trade_press", 0.6, "AU")
+    assert [(i.title, i.body) for i in items] == [
+        ("Will the RBA raise rates in September?", "We asked brokers for their thoughts"),
+        ("75% of Australian buyers willing to cut spending for a home",
+         "Buyers name 4.9% as the mortgage rate that would get them moving"),
+    ]
+    assert items[0].url == (
+        "https://www.brokernews.com.au/news/breaking-news/will-the-rba-raise-rates-in-september-290041.aspx"
+    )
+    assert items[0].published_at == datetime(2026, 9, 25, 3, 10, tzinfo=timezone.utc)
+    assert all("<" not in i.body and "img" not in i.body for i in items)
+
+
+def test_atom_summary_preferred_over_content():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>T</title>
+    <link rel="alternate" href="https://example.com/a"/>
+    <updated>2026-06-26T03:00:00Z</updated>
+    <summary>From summary</summary>
+    <content type="html">&lt;p&gt;From content&lt;/p&gt;</content>
+  </entry>
+</feed>"""
+    items = _parse_rss(xml, "X", "news", "trade_press", 0.6, "AU")
+    assert items[0].body == "From summary"
 
 
 def test_aggregator_name_in_metadata():
