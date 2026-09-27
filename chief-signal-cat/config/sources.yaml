@@ -45,6 +45,7 @@ sources:
     keyword_allowlist:
       - "RBA"
       - "cash rate"
+      - "cash rates"
       - "rate hike"
       - "rate hikes"
       - "rate cut"
