@@ -119,6 +119,11 @@ def _parse_single_rss_item(
         title = _get_text(element, "{http://www.w3.org/2005/Atom}title") or ""
     if not description:
         description = _get_text(element, "{http://www.w3.org/2005/Atom}summary") or ""
+    if not description:
+        # Atom feeds that carry only <content> (e.g. Australian Broker: a one-line
+        # standfirst as escaped HTML). Stripped below like any description; without
+        # it the filter sees the title alone.
+        description = _get_text(element, "{http://www.w3.org/2005/Atom}content") or ""
     if not pub_date_str:
         pub_date_str = _get_text(element, "{http://www.w3.org/2005/Atom}updated") or ""
 

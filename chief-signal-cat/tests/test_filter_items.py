@@ -285,6 +285,76 @@ def test_min_keyword_matches_two_requires_two():
     assert results[1].filter_status == "kept"
 
 
+# ── Per-source keyword allowlist ──────────────────────────────
+
+_SOURCES = [
+    {"name": "Trade Press", "keyword_allowlist": ["RBA", "lender", "lenders"]},
+    {"name": "Other News"},
+]
+
+
+def _news(source_name, title, id_):
+    return _item(
+        source_name=source_name, trust_tier="trade_press", source_type="news",
+        title=title, body="", url=f"https://x.com/{id_}", id=id_,
+    )
+
+
+def test_source_allowlist_keeps_its_own_items():
+    result = filter_items([_news("Trade Press", "RBA holds", "t1")], STRICT_CFG, _SOURCES)
+    assert result[0].filter_status == "kept"
+    assert result[0].matched_keywords == ["RBA"]
+
+
+def test_source_allowlist_does_not_apply_to_other_sources():
+    result = filter_items([_news("Other News", "RBA holds", "o1")], STRICT_CFG, _SOURCES)
+    assert result[0].filter_reason == "no_keyword_match"
+
+
+def test_source_allowlist_adds_to_global():
+    # Global terms still count for a source that has its own list.
+    result = filter_items([_news("Trade Press", "ASIC and RBA", "t2")], STRICT_CFG, _SOURCES)
+    assert result[0].matched_keywords == ["ASIC", "RBA"]
+
+
+def test_source_allowlist_whole_word_plurals_listed_explicitly():
+    result = filter_items(
+        [_news("Trade Press", "Ten lenders reprice", "t3"), _news("Trade Press", "Lenderly news", "t4")],
+        STRICT_CFG, _SOURCES,
+    )
+    assert result[0].matched_keywords == ["lenders"]
+    assert result[1].filter_reason == "no_keyword_match"
+
+
+def test_keyword_matches_record_which_list():
+    result = filter_items([_news("Trade Press", "ASIC and RBA", "t6")], STRICT_CFG, _SOURCES)
+    assert result[0].keyword_matches == [
+        {"list": "global", "term": "ASIC"},
+        {"list": "source:Trade Press", "term": "RBA"},
+    ]
+
+
+def test_global_only_match_recorded_as_global():
+    result = filter_items([_item()], STRICT_CFG)
+    assert {m["list"] for m in result[0].keyword_matches} == {"global"}
+    assert [m["term"] for m in result[0].keyword_matches] == result[0].matched_keywords
+
+
+def test_term_in_both_lists_recorded_twice_listed_once():
+    sources = [{"name": "Trade Press", "keyword_allowlist": ["ASIC"]}]
+    result = filter_items([_news("Trade Press", "ASIC update", "t7")], STRICT_CFG, sources)
+    assert result[0].keyword_matches == [
+        {"list": "global", "term": "ASIC"},
+        {"list": "source:Trade Press", "term": "ASIC"},
+    ]
+    assert result[0].matched_keywords == ["ASIC"]
+
+
+def test_no_sources_means_global_only():
+    result = filter_items([_news("Trade Press", "RBA holds", "t5")], STRICT_CFG)
+    assert result[0].filter_reason == "no_keyword_match"
+
+
 # ── matched_keywords ──────────────────────────────────────────
 
 def test_matched_keywords_populated_with_original_case():

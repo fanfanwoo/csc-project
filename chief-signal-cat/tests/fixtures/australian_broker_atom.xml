@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title type="text">Australian Broker</title>
+  <id>tag:brokernews.com.au,2015:/rss</id>
+  <updated>2026-09-25T06:20:27Z</updated>
+  <author>
+    <name>Australian Broker</name>
+  </author>
+  <link rel="alternate" href="https://www.brokernews.com.au/" />
+  <link rel="self" href="https://www.brokernews.com.au/rss/" />
+    <entry>
+    <id>tag:brokernews.com.au,2026-09-25:/news/breaking-news/290041</id>
+    <title type="text">Will the RBA raise rates in September? </title>
+    <updated>2026-09-25T03:10:00Z</updated>
+    <link rel="alternate" href="https://www.brokernews.com.au/news/breaking-news/will-the-rba-raise-rates-in-september-290041.aspx" />
+    <content type="html">&lt;p&gt;We asked brokers for their thoughts&lt;/p&gt;&lt;img src="https://cdn-res.keymedia.com/cms/images/ab/kell_639258369843377750.jpg" alt="" style="max-width:240px" /&gt;</content>
+  </entry>
+  <entry>
+    <id>tag:brokernews.com.au,2026-09-25:/news/breaking-news/290056</id>
+    <title type="text">75% of Australian buyers willing to cut spending for a home</title>
+    <updated>2026-09-25T03:00:02Z</updated>
+    <link rel="alternate" href="https://www.brokernews.com.au/news/breaking-news/75-of-australian-buyers-willing-to-cut-spending-for-a-home-290056.aspx" />
+    <content type="html">&lt;p&gt;Buyers name 4.9% as the mortgage rate that would get them moving&lt;/p&gt;&lt;img src="https://cdn-res.keymedia.com/cms/images/ab/kris_639259168543958405.png" alt="" style="max-width:240px" /&gt;</content>
+  </entry>
+</feed>

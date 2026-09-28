@@ -39,3 +39,28 @@ sources:
     source_weight: 0.6
     max_items: 30
     body_selector: "div.article-detail"
+    # AB-only vocabulary, added to the global filter.keyword_allowlist for this source
+    # only (rates / lending language the car-finance global list misses). Whole-word,
+    # case-insensitive; plurals listed explicitly. Measured 13/30 kept on 2026-09-27.
+    keyword_allowlist:
+      - "RBA"
+      - "cash rate"
+      - "cash rates"
+      - "rate hike"
+      - "rate hikes"
+      - "rate cut"
+      - "rate cuts"
+      - "fixed rate"
+      - "fixed rates"
+      - "lender"
+      - "lenders"
+      - "reprice"
+      - "reprices"
+      - "household credit"
+      - "credit demand"
+      - "business loan"
+      - "business loans"
+      - "borrower"
+      - "borrowers"
+      - "borrowing"
+      - "lending"
