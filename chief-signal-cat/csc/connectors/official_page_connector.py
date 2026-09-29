@@ -2,6 +2,7 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 
@@ -16,6 +17,7 @@ logger = logging.getLogger("csc.connectors.official_page")
 ASIC_BASE_URL = "https://www.asic.gov.au"
 DETAIL_BODY_SELECTOR = "div.asic-page__article"  # article body on detail pages (was id="nh-article-body" until 2026)
 DETAIL_FETCH_DELAY = 0.5               # polite delay (seconds) between detail page fetches
+ASIC_TZ = ZoneInfo("Australia/Sydney")  # publishedDate is local time despite its "Z"
 
 
 # ── Public API ────────────────────────────────────────────────
@@ -127,9 +129,17 @@ def _strip_html(text: str) -> str:
 
 
 def _parse_date(date_str: str | None) -> datetime | None:
+    """
+    ASIC's publishedDate carries a "Z" suffix but is Australia/Sydney wall-clock
+    time (verified 2026-09-29: 26-231MR "17:30Z" vs createDate 07:17Z UTC and a
+    page dated 29 September). Treat the "Z" as local; keep any explicit offset.
+    """
     if not date_str:
         return None
     try:
-        return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(date_str.removesuffix("Z"))
     except (ValueError, TypeError):
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=ASIC_TZ)
+    return parsed

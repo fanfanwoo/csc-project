@@ -296,6 +296,23 @@ def test_parse_date_iso_z():
     assert d.tzinfo is not None
 
 
+def test_parse_date_z_is_sydney_local_time():
+    # 26-231MR: publishedDate "17:30Z" is 17:30 AEST (UTC+10) = 07:30 UTC
+    d = _parse_date("2026-09-29T17:30:00Z")
+    assert d.astimezone(timezone.utc) == datetime(2026, 9, 29, 7, 30, tzinfo=timezone.utc)
+
+
+def test_parse_date_z_follows_daylight_saving():
+    # December is AEDT (UTC+11)
+    d = _parse_date("2026-12-01T10:00:00Z")
+    assert d.astimezone(timezone.utc) == datetime(2026, 11, 30, 23, 0, tzinfo=timezone.utc)
+
+
+def test_parse_date_explicit_offset_kept():
+    d = _parse_date("2026-09-29T17:30:00+00:00")
+    assert d.astimezone(timezone.utc) == datetime(2026, 9, 29, 17, 30, tzinfo=timezone.utc)
+
+
 def test_parse_date_none():
     assert _parse_date(None) is None
 
