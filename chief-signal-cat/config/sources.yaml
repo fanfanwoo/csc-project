@@ -1,9 +1,12 @@
 sources:
+  # Google News search RSS is relevance-ranked, not date-ranked: without `when:`
+  # the top 50 were all >14 days old and dropped as stale (Sep 2026).
+  # when:14d matches filter.max_age_days.
   - name: "Google News AU"
     type: "news"
     trust_tier: "aggregator"
     connector: "rss"
-    url: "https://news.google.com/rss/search?q=car+loan+OR+vehicle+finance+OR+auto+lending+OR+BNPL+car+OR+consumer+credit+australia&hl=en-AU&gl=AU&ceid=AU:en"
+    url: "https://news.google.com/rss/search?q=car+loan+OR+vehicle+finance+OR+auto+lending+OR+BNPL+car+OR+consumer+credit+australia+when:14d&hl=en-AU&gl=AU&ceid=AU:en"
     region: "AU"
     source_weight: 0.5
     max_items: 50
