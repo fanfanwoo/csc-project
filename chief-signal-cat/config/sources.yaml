@@ -9,8 +9,12 @@ sources:
     max_items: 50
 
   # ASIC publishes across its full remit (not only consumer finance).
-  # All official/regulator items are keyword-exempt (filter_items.py line ~138),
-  # so all ~20 items per run reach the classifier.
+  # Official items are keyword-exempt (filter.keyword_match_exempt_tiers) but still
+  # pass the region and recency checks, so only releases within max_age_days reach
+  # the classifier (~20 newest; fewer in quiet weeks).
+  # Endpoint: newsroom-mr-latest.json (20 newest media releases, newest-first) is
+  # what asic.gov.au/newsroom itself loads. The old /scripts/newsroom/newsroom-all.json
+  # is a frozen copy ending Dec 2024 — every item was dropped as stale (Sep 2026).
   # Day 1 decision: rely on classifier relevance_score + scorer + top_n:5 to
   # filter off-domain items. Tighten with a relevance gate if off-topic items
   # surface in the brief after the first few runs.
@@ -18,7 +22,7 @@ sources:
     type: "regulator"
     trust_tier: "official"
     connector: "official_page"
-    url: "https://download.asic.gov.au/scripts/newsroom/newsroom-all.json"
+    url: "https://download.asic.gov.au/asic-nga/data/newsroom/newsroom-mr-latest.json"
     region: "AU"
     source_weight: 1.0
     max_items: 20

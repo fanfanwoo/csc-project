@@ -4,6 +4,7 @@ All network calls are mocked — no live HTTP.
 """
 
 import json
+from pathlib import Path
 from datetime import datetime, timezone
 from unittest.mock import patch, call
 
@@ -17,7 +18,6 @@ def no_sleep(monkeypatch):
 
 from csc.connectors.official_page_connector import (
     ASIC_BASE_URL,
-    DETAIL_BODY_ID,
     fetch_official_page,
     _extract_body,
     _parse_date,
@@ -67,7 +67,7 @@ DETAIL_HTML_1 = f"""<!DOCTYPE html>
 <html><body>
 <main id="nh-container">
   <article id="nh-mr-container">
-    <div id="{DETAIL_BODY_ID}">
+    <div class="asic-page__article">
       <p>ASIC has commenced civil penalty proceedings in the Federal Court against CarFinanceCo.</p>
       <p>The proceedings allege the lender failed responsible lending obligations on over 5,000 loans.</p>
       <h2>Background</h2>
@@ -81,7 +81,7 @@ DETAIL_HTML_2 = f"""<!DOCTYPE html>
 <html><body>
 <main id="nh-container">
   <article id="nh-mr-container">
-    <div id="{DETAIL_BODY_ID}">
+    <div class="asic-page__article">
       <p>ASIC has updated its guidance on consumer credit obligations effective July 2026.</p>
     </div>
   </article>
@@ -195,7 +195,7 @@ def test_max_items_cap():
     def mock_fetch_big(url, source_name, **kwargs):
         if "newsroom-all.json" in url:
             return big_listing
-        return f"<html><body><div id='{DETAIL_BODY_ID}'>Body {url}</div></body></html>"
+        return f"<html><body><div class='asic-page__article'>Body {url}</div></body></html>"
 
     cfg = {**VALID_SOURCE_CFG, "max_items": 3}
     with patch("csc.connectors.official_page_connector.fetch_with_retry", side_effect=mock_fetch_big):
@@ -235,7 +235,7 @@ def test_detail_fetch_failure_skips_item_gracefully():
 
 
 def test_fallback_to_meta_description_when_body_empty():
-    """If detail page has no DETAIL_BODY_ID div, falls back to metaDescription."""
+    """If detail page has no DETAIL_BODY_SELECTOR div, falls back to metaDescription."""
     empty_body_html = "<html><body><main><article></article></main></body></html>"
 
     def mock_fetch_empty(url, source_name, **kwargs):
@@ -271,6 +271,17 @@ def test_extract_body_returns_text():
     assert "<p>" not in body
 
 
+def test_extract_body_from_current_asic_page():
+    """Fixture: live 26-230MR detail page saved 2026-09-29 (current asic.gov.au layout)."""
+    html = (Path(__file__).parent / "fixtures" / "asic_mr_26-230MR_2026-09-29.html").read_text()
+    body = _extract_body(html)
+    assert body.startswith("Richard Evans (also known as Richard Evertz)")
+    assert len(body) > 2000
+    # Page chrome (nav, footer) is outside the article div
+    assert "Privacy" not in body
+    assert "<p>" not in body
+
+
 def test_extract_body_missing_div_returns_empty():
     html = "<html><body><div id='other'>stuff</div></body></html>"
     assert _extract_body(html) == ""
@@ -283,6 +294,23 @@ def test_parse_date_iso_z():
     assert d is not None
     assert d.year == 2026 and d.month == 5 and d.day == 30
     assert d.tzinfo is not None
+
+
+def test_parse_date_z_is_sydney_local_time():
+    # 26-231MR: publishedDate "17:30Z" is 17:30 AEST (UTC+10) = 07:30 UTC
+    d = _parse_date("2026-09-29T17:30:00Z")
+    assert d.astimezone(timezone.utc) == datetime(2026, 9, 29, 7, 30, tzinfo=timezone.utc)
+
+
+def test_parse_date_z_follows_daylight_saving():
+    # December is AEDT (UTC+11)
+    d = _parse_date("2026-12-01T10:00:00Z")
+    assert d.astimezone(timezone.utc) == datetime(2026, 11, 30, 23, 0, tzinfo=timezone.utc)
+
+
+def test_parse_date_explicit_offset_kept():
+    d = _parse_date("2026-09-29T17:30:00+00:00")
+    assert d.astimezone(timezone.utc) == datetime(2026, 9, 29, 17, 30, tzinfo=timezone.utc)
 
 
 def test_parse_date_none():

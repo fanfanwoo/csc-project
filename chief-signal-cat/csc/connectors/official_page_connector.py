@@ -2,6 +2,7 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 
@@ -14,8 +15,9 @@ logger = logging.getLogger("csc.connectors.official_page")
 # ── Selectors / layout constants ──────────────────────────────
 # Change here when ASIC updates their page structure.
 ASIC_BASE_URL = "https://www.asic.gov.au"
-DETAIL_BODY_ID = "nh-article-body"     # <div id="nh-article-body"> on detail pages
+DETAIL_BODY_SELECTOR = "div.asic-page__article"  # article body on detail pages (was id="nh-article-body" until 2026)
 DETAIL_FETCH_DELAY = 0.5               # polite delay (seconds) between detail page fetches
+ASIC_TZ = ZoneInfo("Australia/Sydney")  # publishedDate is local time despite its "Z"
 
 
 # ── Public API ────────────────────────────────────────────────
@@ -25,7 +27,7 @@ def fetch_official_page(source_cfg: dict) -> list[RawItem]:
     Fetch ASIC media releases via JSON listing + detail page body text.
 
     Stage 1: GET the JSON listing from source_cfg["url"], filter to max_items newest.
-    Stage 2: For each release, GET the detail page and extract body from DETAIL_BODY_ID.
+    Stage 2: For each release, GET the detail page and extract body from DETAIL_BODY_SELECTOR.
              Falls back to metaDescription if the detail fetch fails or body is empty.
     """
     validate_source_config(source_cfg)
@@ -115,7 +117,7 @@ def _fetch_one(release: dict, source_cfg: dict, fetched_at: datetime) -> RawItem
 
 def _extract_body(html: str) -> str:
     soup = BeautifulSoup(html, "html.parser")
-    div = soup.find(id=DETAIL_BODY_ID)
+    div = soup.select_one(DETAIL_BODY_SELECTOR)
     if div is None:
         return ""
     return div.get_text(separator=" ", strip=True)
@@ -127,9 +129,17 @@ def _strip_html(text: str) -> str:
 
 
 def _parse_date(date_str: str | None) -> datetime | None:
+    """
+    ASIC's publishedDate carries a "Z" suffix but is Australia/Sydney wall-clock
+    time (verified 2026-09-29: 26-231MR "17:30Z" vs createDate 07:17Z UTC and a
+    page dated 29 September). Treat the "Z" as local; keep any explicit offset.
+    """
     if not date_str:
         return None
     try:
-        return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(date_str.removesuffix("Z"))
     except (ValueError, TypeError):
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=ASIC_TZ)
+    return parsed
