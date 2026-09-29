@@ -5,9 +5,14 @@
   <key>Label</key>
   <string>com.chiefsignalcat.daily</string>
 
-  <!-- Runs the existing scheduler (retry + failure-alert email built in). -->
+  <!-- Runs the existing scheduler (retry + failure-alert email built in).
+       caffeinate -i holds an idle-sleep assertion until the scheduler exits, so a run
+       started on a brief dark wake is not frozen mid-run (2026-09-29: slept at 07:02,
+       resumed 08:55). It passes through the scheduler's exit code. -->
   <key>ProgramArguments</key>
   <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-i</string>
     <string>__PYTHON__</string>
     <string>-m</string>
     <string>csc.pipeline.scheduler</string>

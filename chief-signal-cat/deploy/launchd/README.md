@@ -48,7 +48,9 @@ bash deploy/launchd/uninstall.sh                # unload + remove both
 ## Caveats
 
 - **Laptop must be awake.** launchd fires the job on the next wake if the Mac was
-  asleep at 07:00 (runs once, does not stack missed days).
+  asleep at 07:00 (runs once, does not stack missed days). The daily job runs under
+  `/usr/bin/caffeinate -i`, so once started it keeps the Mac from idle-sleeping until
+  it finishes. It does not wake the Mac; lid-closed on battery can still sleep it.
 - Credentials come from `chief-signal-cat/.env` (loaded by `csc.config`), so the
   agent needs no extra environment.
 - `last exit code = 1` with a growing `runs` count means the job fires but fails —
