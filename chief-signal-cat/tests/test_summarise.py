@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from unittest.mock import MagicMock, patch
 
 from csc.pipeline.summarise import summarise
@@ -112,3 +113,30 @@ def test_summarise_no_review_queue_section_when_empty():
     # No queue → markdown untouched, ids empty.
     assert brief.markdown_body == MOCK_BRIEF
     assert brief.review_queue_ids == []
+
+
+def test_summarise_labels_the_date_in_the_report_timezone():
+    """date_range is the reader's calendar date; generated_at stays UTC."""
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
+    with (
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
+        brief = summarise([_scored()], CFG, report_timezone=ZoneInfo("Australia/Sydney"))
+
+    now = datetime.now(timezone.utc)
+    assert brief.date_range == now.astimezone(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
+    assert brief.generated_at.tzinfo == timezone.utc
+
+
+def test_summarise_defaults_to_utc_dates():
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
+    with (
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
+        brief = summarise([_scored()], CFG)
+
+    assert brief.date_range == datetime.now(timezone.utc).strftime("%Y-%m-%d")
