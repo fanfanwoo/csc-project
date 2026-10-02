@@ -12,6 +12,7 @@ from csc.pipeline.classify import classify_items
 from csc.pipeline.verify import verify_items
 from csc.pipeline import run_metrics
 from csc.pipeline.score import score_items
+from csc.pipeline.source_health import assess_sources
 from csc.pipeline.summarise import summarise
 from csc.pipeline.send_email import send_email
 from csc.schemas.runs import RunLog
@@ -33,6 +34,11 @@ def run_pipeline(dry_run: bool = False) -> RunLog:
 
         raw = fetch_all_sources(cfg["sources"])
         log.items_fetched = len(raw)
+
+        # Judged on the raw fetch, before any filter: a source that returned
+        # nothing must be distinguishable from one whose items were filtered out.
+        # Newest-item dates render in the report timezone, like the brief's own.
+        health = assess_sources(raw, cfg["sources"], tz=report_tz(cfg))
 
         filtered_all = filter_items(raw, cfg["filter"], cfg["sources"])
         filtered = [i for i in filtered_all if i.filter_status != "dropped"]
@@ -82,7 +88,11 @@ def run_pipeline(dry_run: bool = False) -> RunLog:
         log.items_scored = len(scored)
 
         brief = summarise(
-            scored, cfg["summary"], review_queue=held, report_timezone=report_tz(cfg)
+            scored,
+            cfg["summary"],
+            review_queue=held,
+            source_health=health,
+            report_timezone=report_tz(cfg),
         )
         brief.run_id = run_id
         brief_path = save_brief(brief)

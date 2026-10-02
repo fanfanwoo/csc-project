@@ -27,6 +27,7 @@ pipeline table below.
 - **Signal** — the domain concept: a piece of external intelligence that something is changing. The product noun ("top signals", `signal_type`, the name on the tin).
 - **Item** — the pipeline data record that carries a *candidate* signal stage to stage (`RawItem → ScoredItem`). Not every item becomes a signal: filtered/dropped items never do; held items are signals whose surface-status is undecided pending review.
 - **`trust_tier` vs `evidence_category`** — `trust_tier` is the 6-value source-config label; `evidence_category` is the 3-bucket (`official|publisher|aggregator`) value *derived* from it. Routing keys on the derived category, never on `trust_tier` directly.
+- **source health vs filter pressure** — source health asks whether a source *delivered* (judged on the raw fetch, before any filter); filter pressure asks how much of what it delivered survived (`run_metrics`). A source whose items were all filtered out is healthy and unproductive; a source that returned nothing is neither.
 - **hold vs mark** — reliability flags *hold* an item (out of the brief, into the review queue); the stakes flag (`sensitive_domain`) *marks* it but lets it pass. This split is what makes verify a router, not a filter. (See ADR 0001.)
 
 ## Current state
@@ -52,6 +53,7 @@ Where each stage lives (all under `chief-signal-cat/csc/`):
 |---|---|---|
 | scheduler | `pipeline/scheduler.py` | trigger only, no business logic |
 | fetch | `pipeline/fetch_sources.py` + `connectors/` | fetch raw items; retries; failed-source handling |
+| source_health | `pipeline/source_health.py` | judge each **configured** source on the raw fetch: newest item age vs its own `max_staleness_days`, or zero items. Warnings log at ERROR and reach the brief |
 | filter | `pipeline/filter_items.py` | deterministic noise removal (allow/block, recency, region, keywords) |
 | deduplicate | `pipeline/deduplicate.py` | exact-URL then fuzzy-title merge; **prefers the body-capable duplicate** (official > publisher > aggregator), then date (ADR-0003) |
 | enrich_fetch | `pipeline/enrich_fetch.py` | **deterministic** fetch of publisher article bodies via per-source `body_selector`; official no-op, aggregator skip. Owns `enrichment_status/reason` (ADR-0003) |
@@ -59,7 +61,7 @@ Where each stage lives (all under `chief-signal-cat/csc/`):
 | classify | `pipeline/classify.py` | LLM classification → structured JSON. Pure (no review flags) |
 | verify | `pipeline/verify.py` | deterministic gate: partition pass / hold (ADR-0001, ADR-0002) |
 | score | `pipeline/score.py` | rule-based strategic ranking (LLM does not set final priority) |
-| summarise | `pipeline/summarise.py` | LLM brief; includes the review-queue section |
+| summarise | `pipeline/summarise.py` | LLM brief; appends the review-queue and source-health sections deterministically |
 | output | `pipeline/send_email.py` | email/brief delivery |
 | orchestration | `run.py` | wires the stages; held items skip score and persist to the review queue |
 
@@ -72,6 +74,8 @@ evidence_state.
 - **Google News AU** — aggregator, weight 0.5. **Discovery source only**: no fetchable body (raw redirect, headline snippet). Treated as `headline_only`.
 - **ASIC Media** — official regulator, weight 1.0. **Evidence anchor**: full bodies via two-stage fetch (`official_page_connector.py`).
 - **Australian Broker** — `trade_press` (→ publisher), weight 0.6 (v1b). Feed body is a headline snippet, but each entry's alternate `<link>` is a real `.aspx` article; `enrich_fetch` fetches it using `body_selector: div.article-detail`. Mortgage/property-heavy, lighter on car finance. `/premium/` paths paywalled.
+
+Each source also carries `max_staleness_days` — how long its own silence stays normal before source health warns. Google News AU 3 (an all-AU car-finance sweep should produce most days); ASIC Media 4 and Australian Broker 4 (burst publishing and weekday trade press both go quiet over a long weekend). Optional: a source without it is never judged stale, only for returning nothing.
 
 (`manual_csv_connector.py` also exists; ASIC uses `official_page`, Google News + Australian Broker use `rss`.)
 

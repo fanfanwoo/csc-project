@@ -10,6 +10,9 @@ sources:
     region: "AU"
     source_weight: 0.5
     max_items: 50
+    # Health threshold: an aggregator sweeping all AU car-finance news should
+    # produce something most days; 3 quiet days means the query or feed broke.
+    max_staleness_days: 3
 
   # ASIC publishes across its full remit (not only consumer finance).
   # Official items are keyword-exempt (filter.keyword_match_exempt_tiers) but still
@@ -29,6 +32,9 @@ sources:
     region: "AU"
     source_weight: 1.0
     max_items: 20
+    # Health threshold: ASIC publishes in bursts and goes quiet over weekends,
+    # so 4 days spans a normal lull without hiding a frozen endpoint.
+    max_staleness_days: 4
 
   # Body-bearing publisher (v1b). The Atom feed <summary> is only a headline +
   # standfirst (~180–215 chars) — NOT evidence. But each entry's alternate <link>
@@ -45,6 +51,8 @@ sources:
     region: "AU"
     source_weight: 0.6
     max_items: 30
+    # Health threshold: weekday trade press — 4 days covers a long weekend.
+    max_staleness_days: 4
     body_selector: "div.article-detail"
     # AB-only vocabulary, added to the global filter.keyword_allowlist for this source
     # only (rates / lending language the car-finance global list misses). Whole-word,
