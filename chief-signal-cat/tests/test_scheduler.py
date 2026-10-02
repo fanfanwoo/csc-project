@@ -89,3 +89,97 @@ def test_send_alert_logs_sendgrid_not_implemented(caplog):
             _send_alert()
 
     assert any("SendGrid" in r.message for r in caplog.records)
+
+
+# ── Config errors reach the alert ─────────────────────────────
+
+def _write_configs(cfg_dir, sources_yaml: str) -> None:
+    """A minimal three-file config tree; only sources.yaml varies per test."""
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    (cfg_dir / "sources.yaml").write_text(sources_yaml)
+    (cfg_dir / "pipeline.yaml").write_text("pipeline:\n  synthesis_window_days: 3\n")
+    (cfg_dir / "email.yaml").write_text(
+        'email:\n  provider: "smtp"\n  from_address: "csc@example.com"\n'
+        '  recipients:\n    - "reader@example.com"\n  alert_address: "alert@example.com"\n'
+    )
+
+
+_VALID_SOURCE = '''sources:
+  - name: "ASIC Media"
+    type: "regulator"
+    trust_tier: "official"
+    url: "https://example.com/asic.json"
+    region: "AU"
+    max_staleness_days: 4
+'''
+
+# The typo under test: max_staleness_days must be a positive integer.
+_TYPO_SOURCE = _VALID_SOURCE.replace("max_staleness_days: 4", 'max_staleness_days: "4 days"')
+
+
+def test_a_config_typo_still_sends_the_failure_alert(tmp_path, monkeypatch):
+    """A fatal config error aborts before any fetch — the alert must still fire.
+
+    validate_source_config raises inside fetch_all_sources, which is inside
+    run_pipeline's try, so the error propagates to run_once, exhausts both
+    attempts, and reaches _send_alert. No network is touched: validation runs
+    before the first request.
+    """
+    cfg_dir = tmp_path / "config"
+    _write_configs(cfg_dir, _TYPO_SOURCE)
+    monkeypatch.setattr("csc.config._CONFIG_DIR", cfg_dir)
+
+    with (
+        patch("csc.pipeline.send_email._send_smtp") as mock_smtp,
+        pytest.raises(SystemExit) as exit_info,
+    ):
+        from csc.pipeline.scheduler import run_once
+        run_once()
+
+    assert exit_info.value.code == 1
+    mock_smtp.assert_called_once()
+    subject, body, recipients, _cfg = mock_smtp.call_args.args
+    assert recipients == ["alert@example.com"]
+    assert subject == "[CSC ALERT] Pipeline failed after 2 attempts"
+
+
+def test_the_config_error_is_logged_before_the_alert(tmp_path, monkeypatch, caplog):
+    """The alert says only 'failed'; the reason has to be findable in the log."""
+    cfg_dir = tmp_path / "config"
+    _write_configs(cfg_dir, _TYPO_SOURCE)
+    monkeypatch.setattr("csc.config._CONFIG_DIR", cfg_dir)
+
+    with (
+        caplog.at_level(logging.ERROR),
+        patch("csc.pipeline.send_email._send_smtp"),
+        pytest.raises(SystemExit),
+    ):
+        from csc.pipeline.scheduler import run_once
+        run_once()
+
+    assert any("max_staleness_days" in str(r.__dict__.get("error", "")) for r in caplog.records)
+
+
+def test_unparseable_config_cannot_alert_and_only_logs(tmp_path, monkeypatch, caplog):
+    """The one gap: _send_alert needs load_config for the address.
+
+    A value typo is caught after the config loads, so the alert address is
+    available. Broken YAML *syntax* breaks load_config itself, inside
+    _send_alert's own try — so no email can be sent and the failure survives
+    only in the log. Documenting it here rather than claiming alerts are
+    unconditional.
+    """
+    cfg_dir = tmp_path / "config"
+    _write_configs(cfg_dir, "sources:\n  - name: [unclosed\n")
+    monkeypatch.setattr("csc.config._CONFIG_DIR", cfg_dir)
+
+    with (
+        caplog.at_level(logging.ERROR),
+        patch("csc.pipeline.send_email._send_smtp") as mock_smtp,
+        pytest.raises(SystemExit),
+    ):
+        from csc.pipeline.scheduler import run_once
+        run_once()
+
+    mock_smtp.assert_not_called()
+    assert any("failed to send alert email" in r.message for r in caplog.records)
