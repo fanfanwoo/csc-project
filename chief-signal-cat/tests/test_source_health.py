@@ -240,3 +240,52 @@ def test_invalid_threshold_is_a_fatal_config_error(bad):
 def test_threshold_is_optional_in_config():
     source = {k: v for k, v in SOURCES[0].items() if k != "max_staleness_days"}
     validate_source_config(source)   # must not raise
+
+
+# ── Wiring: the configured timezone reaches the rendered date ──
+
+def test_run_pipeline_passes_the_configured_timezone_to_source_health():
+    """The config key, not UTC, decides the newest-item dates a reader sees.
+
+    Asserted on run_pipeline rather than on assess_sources alone: the bug this
+    guards against is a forgotten argument in the wiring, which a unit test of
+    assess_sources cannot see.
+    """
+    from datetime import datetime as dt
+    from unittest.mock import MagicMock, patch
+    from zoneinfo import ZoneInfo
+
+    from csc.config import load_config
+    from csc.run import run_pipeline
+    from csc.schemas.briefs import Brief
+
+    configured = load_config().get("timezone")
+    assert configured, "config/pipeline.yaml has no timezone: key to wire"
+
+    brief = Brief(
+        run_id="", date_range="2026-10-02", generated_at=dt.now(timezone.utc),
+        one_line_readout="readout", markdown_body="# body",
+    )
+    with (
+        patch("csc.run.fetch_all_sources", return_value=[]),
+        patch("csc.run.assess_sources", return_value=[]) as mock_assess,
+        patch("csc.run.summarise", return_value=brief),
+        patch("csc.run.send_email"),
+    ):
+        run_pipeline()
+
+    assert mock_assess.call_args.kwargs["tz"] == ZoneInfo(configured)
+
+
+def test_the_live_config_renders_sydney_dates_not_utc():
+    """End to end over the real config: 21:00Z is already tomorrow in Sydney."""
+    from csc.config import load_config
+    from csc.utils.report_tz import report_tz
+
+    source = dict(SOURCES[0], name="ASIC Media")
+    report = assess_sources(
+        [_item("ASIC Media", 0.0)], [source], tz=report_tz(load_config()), now=NOW
+    )
+
+    # NOW is 2026-10-02 21:00Z — the same instant is 2026-10-03 in Sydney.
+    assert _by_name(report)["ASIC Media"].newest_item_date == "2026-10-03"

@@ -102,6 +102,7 @@ Full rationale in `docs/adr/0001…`, `docs/adr/0002…`.
 ## Config, storage, LLM
 
 - **Config** (`chief-signal-cat/config/`): `pipeline.yaml` (processing logic + thresholds), `sources.yaml` (source defs + connector dispatch), `email.yaml` (credentials only).
+- **Report timezone** (`pipeline.yaml` top-level `timezone:`, shipped as `Australia/Sydney`): the calendar *human-facing date labels* are rendered in — the brief's `date_range` and the run-metrics `date` column, via `csc/utils/report_tz.py`. Every stored timestamp stays UTC. Why it exists: a 07:00 Sydney run is 20:00–21:00 the previous day in UTC, so UTC-derived labels called every morning brief yesterday. Unset or unknown falls back to UTC.
 - **Storage** (`csc/storage/`): JSONL is the active store (`jsonl_store.py`) — briefs to `data/briefs/{run_id}.md`, review queue to `data/review/{run_id}.jsonl`, run logs to `data/logs/`. `supabase_store.py` exists as an alternative backend.
 - **LLM:** Google Gemini `gemini-2.5-flash` via `google-genai` SDK, key `GOOGLE_API_KEY`. Prototyped in AI Studio (same model family).
 - **Tests:** pytest, fixture-based. Run with the venv: `.venv/bin/python -m pytest -q` from `chief-signal-cat/`.

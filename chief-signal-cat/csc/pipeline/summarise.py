@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from google import genai
 from google.genai import types
@@ -9,6 +10,7 @@ from csc.pipeline.source_health import SourceHealth, render_source_health
 from csc.schemas.briefs import Brief
 from csc.schemas.items import ClassifiedItem, ScoredItem
 from csc.utils.logging import get_logger
+from csc.utils.report_tz import local_date
 
 logger = get_logger(__name__)
 
@@ -20,6 +22,7 @@ def summarise(
     cfg: dict,
     review_queue: list[ClassifiedItem] | None = None,
     source_health: list[SourceHealth] | None = None,
+    report_timezone: ZoneInfo | timezone = timezone.utc,
 ) -> Brief:
     review_queue = review_queue or []
     source_health = source_health or []
@@ -33,7 +36,7 @@ def summarise(
     top_items = items[:top_n]
     review_items = [i for i in top_items if i.human_review_flag]
     now = datetime.now(timezone.utc)
-    date_range = now.strftime("%Y-%m-%d")
+    date_range = local_date(now, report_timezone)
 
     items_block = "\n\n".join(_format_item(i) for i in top_items)
     user_prompt = (

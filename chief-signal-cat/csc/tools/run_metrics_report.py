@@ -15,7 +15,12 @@ Read-only.
 import argparse
 import glob
 import json
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from csc.config import load_config
+from csc.utils.report_tz import local_date, report_tz
 
 # Columns shown, in order. Keys come from run_metrics.compute().
 _COLUMNS = [
@@ -45,7 +50,19 @@ def load_run_logs(data_dir: str) -> list[dict]:
     return runs
 
 
-def format_report(runs: list[dict], limit: int) -> str:
+def _date_cell(started_at: str, tz: ZoneInfo | timezone) -> str:
+    """started_at is stored UTC; the column shows the reader's calendar date."""
+    if not started_at:
+        return ""
+    try:
+        return local_date(datetime.fromisoformat(started_at), tz)
+    except ValueError:
+        return started_at[:10]
+
+
+def format_report(
+    runs: list[dict], limit: int, tz: ZoneInfo | timezone = timezone.utc
+) -> str:
     if not runs:
         return "No runs with metrics yet. Run the pipeline, then re-check."
 
@@ -54,7 +71,7 @@ def format_report(runs: list[dict], limit: int) -> str:
     for d in runs[:limit]:
         m = d["metrics"]
         run_short = (d.get("run_id") or "")[:8]
-        date = (d.get("started_at") or "")[:10]
+        date = _date_cell(d.get("started_at") or "", tz)
         cells = [str(m.get(key, "-")).rjust(8) for _, key in _COLUMNS]
         lines.append("  ".join([run_short.ljust(8), date.ljust(10)] + cells))
     return "\n".join(lines)
@@ -65,7 +82,8 @@ def main(argv=None) -> None:
     parser.add_argument("--data-dir", default="data/logs", help="dir of run-log JSONL files")
     parser.add_argument("--limit", type=int, default=20, help="max runs to show")
     args = parser.parse_args(argv)
-    print(format_report(load_run_logs(args.data_dir), args.limit))
+    tz = report_tz(load_config())
+    print(format_report(load_run_logs(args.data_dir), args.limit, tz))
 
 
 if __name__ == "__main__":
