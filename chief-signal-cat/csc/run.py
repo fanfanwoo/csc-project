@@ -17,6 +17,7 @@ from csc.pipeline.send_email import send_email
 from csc.schemas.runs import RunLog
 from csc.storage.jsonl_store import append_items, append_run_log, save_brief
 from csc.utils.logging import get_logger
+from csc.utils.report_tz import report_tz
 
 logger = get_logger(__name__)
 
@@ -80,7 +81,9 @@ def run_pipeline(dry_run: bool = False) -> RunLog:
         scored = score_items(passed, cfg["scoring"])
         log.items_scored = len(scored)
 
-        brief = summarise(scored, cfg["summary"], review_queue=held)
+        brief = summarise(
+            scored, cfg["summary"], review_queue=held, report_timezone=report_tz(cfg)
+        )
         brief.run_id = run_id
         brief_path = save_brief(brief)
         logger.info("brief saved", extra={"path": str(brief_path)})
