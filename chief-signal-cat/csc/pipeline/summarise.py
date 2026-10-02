@@ -5,6 +5,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
+from csc.pipeline.source_health import SourceHealth, render_source_health
 from csc.schemas.briefs import Brief
 from csc.schemas.items import ClassifiedItem, ScoredItem
 from csc.utils.logging import get_logger
@@ -18,8 +19,10 @@ def summarise(
     items: list[ScoredItem],
     cfg: dict,
     review_queue: list[ClassifiedItem] | None = None,
+    source_health: list[SourceHealth] | None = None,
 ) -> Brief:
     review_queue = review_queue or []
+    source_health = source_health or []
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
     system_prompt = (_PROMPT_DIR / "summariser_prompt.txt").read_text()
     model = cfg.get("model", "gemini-2.0-flash")
@@ -58,9 +61,19 @@ def summarise(
     if review_queue:
         markdown = markdown.rstrip() + "\n\n" + _render_review_queue(review_queue)
 
+    # Source health is about what did *not* arrive, so no model sees it and every
+    # brief carries it — a silent source must not produce a silent brief.
+    if source_health:
+        markdown = markdown.rstrip() + "\n\n" + render_source_health(source_health)
+
     logger.info(
         "brief generated",
-        extra={"model": model, "top_n": len(top_items), "review_queue": len(review_queue)},
+        extra={
+            "model": model,
+            "top_n": len(top_items),
+            "review_queue": len(review_queue),
+            "source_warnings": sum(1 for h in source_health if h.is_warning),
+        },
     )
     return Brief(
         run_id="",

@@ -112,3 +112,45 @@ def test_summarise_no_review_queue_section_when_empty():
     # No queue → markdown untouched, ids empty.
     assert brief.markdown_body == MOCK_BRIEF
     assert brief.review_queue_ids == []
+
+
+def test_summarise_appends_source_health_below_the_model_output():
+    """Source health is deterministic — appended, never left to the model."""
+    from csc.pipeline.source_health import SourceHealth
+
+    health = [
+        SourceHealth(
+            source_name="ASIC Media", status="ok", item_count=4,
+            newest_item_date="2026-10-02", age_days=0.5, threshold_days=4,
+        ),
+        SourceHealth(
+            source_name="Google News AU", status="warning", threshold_days=3,
+            reason="returned no items",
+        ),
+    ]
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
+    with (
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
+        brief = summarise([_scored()], CFG, source_health=health)
+
+    assert "## Source health" in brief.markdown_body
+    assert "newest 2026-10-02" in brief.markdown_body
+    assert "WARNING: returned no items" in brief.markdown_body
+    # Appended after the model's own body, which is left intact.
+    assert brief.markdown_body.startswith(MOCK_BRIEF.rstrip()[:40])
+    assert brief.markdown_body.index("## Source health") > brief.markdown_body.index("Watch item")
+
+
+def test_summarise_without_source_health_omits_the_section():
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
+    with (
+        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
+        brief = summarise([_scored()], CFG)
+
+    assert "## Source health" not in brief.markdown_body

@@ -60,6 +60,13 @@ def validate_source_config(source_cfg: dict) -> None:
                 f"Source '{name}': max_items must be a positive integer, got '{mi}'"
             )
 
+    if "max_staleness_days" in source_cfg:
+        msd = source_cfg["max_staleness_days"]
+        if not isinstance(msd, int) or isinstance(msd, bool) or msd < 1:
+            raise ValueError(
+                f"Source '{name}': max_staleness_days must be a positive integer, got '{msd}'"
+            )
+
 
 def fetch_with_retry(
     url: str,
