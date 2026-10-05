@@ -3,3 +3,4 @@ pyyaml>=6.0
 certifi>=2024.0
 beautifulsoup4>=4.12
 pytest>=8.0
+langsmith>=0.14
