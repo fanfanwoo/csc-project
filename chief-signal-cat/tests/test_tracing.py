@@ -144,3 +144,17 @@ def test_scheduler_main_flushes_even_when_the_run_exits_nonzero():
             runpy.run_module("csc.pipeline.scheduler", run_name="__main__")
     assert exc.value.code == 1
     flush.assert_called_once_with()
+
+
+def test_manual_run_main_flushes_even_when_the_run_raises():
+    # runpy re-executes csc.run, so run_pipeline is the real one — fail it at load_config.
+    with (
+        patch("csc.config.load_config", side_effect=RuntimeError("down")),
+        patch("csc.utils.tracing.flush_traces") as flush,
+        patch.object(sys, "argv", ["csc.run", "--dry-run"]),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("ignore", RuntimeWarning)   # runpy: module already imported
+        with pytest.raises(RuntimeError, match="down"):
+            runpy.run_module("csc.run", run_name="__main__")
+    flush.assert_called_once_with()

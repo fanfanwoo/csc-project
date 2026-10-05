@@ -20,6 +20,7 @@ from csc.schemas.runs import RunLog
 from csc.storage.jsonl_store import append_decisions, append_items, append_run_log, save_brief
 from csc.utils.logging import get_logger
 from csc.utils.report_tz import report_tz
+from csc.utils.tracing import flush_traces
 
 logger = get_logger(__name__)
 
@@ -134,4 +135,8 @@ if __name__ == "__main__":
         help="Run the full pipeline but skip sending email (still fetches, classifies, saves brief).",
     )
     args = parser.parse_args()
-    run_pipeline(dry_run=args.dry_run)
+    try:
+        run_pipeline(dry_run=args.dry_run)
+    finally:
+        # Bounded: an unreachable LangSmith can't hang a manual run.
+        flush_traces()
