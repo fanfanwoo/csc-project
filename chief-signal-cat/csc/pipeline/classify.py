@@ -12,11 +12,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from google import genai
 from google.genai import types
 
 from csc.schemas.items import ClassificationFailure, ClassifiedItem, FilteredItem
 from csc.utils.logging import get_logger
+from csc.utils.tracing import gemini_client
 from csc.utils.text_cleaning import clean_body
 from csc.utils.validation import validate_classified_item
 
@@ -52,7 +52,7 @@ def classify_items(
 
 def _call_llm(system_prompt: str, user_prompt: str, model: str) -> str:
     """Thin Gemini wrapper. Isolated here so tests can mock it without touching provider internals."""
-    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+    client = gemini_client(os.environ["GOOGLE_API_KEY"])
     response = client.models.generate_content(
         model=model,
         contents=user_prompt,

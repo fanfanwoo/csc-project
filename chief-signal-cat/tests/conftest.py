@@ -8,9 +8,15 @@ csc.tools.review_recurrence. Every test now gets jsonl_store pointed at
 tmp_path, and the real data/ tree is snapshotted before and after each test —
 any added, removed or modified path fails the test.
 """
+import os
 from pathlib import Path
 
 import pytest
+
+# Tests never send LangSmith traces. .env sets LANGSMITH_TRACING=true, and
+# csc.config loads .env with setdefault, so setting it here (before any csc
+# import) wins for the whole session.
+os.environ["LANGSMITH_TRACING"] = "false"
 
 REAL_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 

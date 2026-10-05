@@ -152,7 +152,7 @@ def test_classify_failure_recorded_in_run_log():
             side_effect=["not valid json {{{{", json.dumps(VALID_CLASSIFIER_RESPONSE)],
         ),
         patch(
-            "csc.pipeline.summarise.genai.Client",
+            "csc.utils.tracing.genai.Client",
             return_value=mock_summarise_client,
         ),
         patch("csc.run.send_email"),

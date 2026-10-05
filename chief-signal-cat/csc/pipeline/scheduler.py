@@ -15,6 +15,7 @@ from csc.config import load_config
 from csc.pipeline.send_email import send_plain_text
 from csc.run import run_pipeline
 from csc.utils.logging import get_logger
+from csc.utils.tracing import flush_traces
 
 logger = get_logger(__name__)
 
@@ -67,4 +68,8 @@ def _send_alert() -> None:
 
 
 if __name__ == "__main__":
-    run_once()
+    try:
+        run_once()
+    finally:
+        # Also on sys.exit(1). Bounded: an unreachable LangSmith can't hang the run.
+        flush_traces()
