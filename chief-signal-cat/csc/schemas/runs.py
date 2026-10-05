@@ -22,3 +22,7 @@ class RunLog:
     # csc/pipeline/run_metrics.py). Kept as a dict so it can grow without bloating
     # the flat core counts above.
     metrics: dict = field(default_factory=dict)
+    # Per-source filter/dedupe outcome counts:
+    # {source: {"kept": n, "dropped": n, "by_reason": {reason: n}}}.
+    # The per-item records behind them are in data/decisions/{run_id}.jsonl.
+    decisions: dict = field(default_factory=dict)

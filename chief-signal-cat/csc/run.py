@@ -6,6 +6,7 @@ from csc.config import load_config
 from csc.pipeline.fetch_sources import fetch_all_sources
 from csc.pipeline.filter_items import filter_items
 from csc.pipeline.deduplicate import deduplicate
+from csc.pipeline.decisions import dedupe_decisions, filter_decisions, summarise_decisions
 from csc.pipeline.enrich_fetch import enrich
 from csc.pipeline.evidence_state import label_evidence
 from csc.pipeline.classify import classify_items
@@ -16,7 +17,7 @@ from csc.pipeline.source_health import assess_sources
 from csc.pipeline.summarise import summarise
 from csc.pipeline.send_email import send_email
 from csc.schemas.runs import RunLog
-from csc.storage.jsonl_store import append_items, append_run_log, save_brief
+from csc.storage.jsonl_store import append_decisions, append_items, append_run_log, save_brief
 from csc.utils.logging import get_logger
 from csc.utils.report_tz import report_tz
 
@@ -47,6 +48,12 @@ def run_pipeline(dry_run: bool = False) -> RunLog:
         dedup_stats: dict = {}
         deduped = deduplicate(filtered, cfg["deduplicate"], stats=dedup_stats)
         log.items_deduplicated = len(deduped)
+
+        # One line per fetched item: filter drops, then dedupe kept/duplicate.
+        decisions = filter_decisions(filtered_all) + dedupe_decisions(filtered, deduped)
+        append_decisions(run_id, decisions)
+        log.decisions = summarise_decisions(decisions)
+        logger.info("decisions recorded", extra={"run_id": run_id, "by_source": log.decisions})
 
         enriched = enrich(deduped, cfg.get("enrich_fetch", {}), cfg["sources"])
 
