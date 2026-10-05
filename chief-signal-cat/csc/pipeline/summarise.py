@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from google import genai
 from google.genai import types
 
 from csc.pipeline.source_health import SourceHealth, render_source_health
@@ -11,6 +10,7 @@ from csc.schemas.briefs import Brief
 from csc.schemas.items import ClassifiedItem, ScoredItem
 from csc.utils.logging import get_logger
 from csc.utils.report_tz import local_date
+from csc.utils.tracing import gemini_client
 
 logger = get_logger(__name__)
 
@@ -26,7 +26,7 @@ def summarise(
 ) -> Brief:
     review_queue = review_queue or []
     source_health = source_health or []
-    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+    client = gemini_client(os.environ["GOOGLE_API_KEY"])
     system_prompt = (_PROMPT_DIR / "summariser_prompt.txt").read_text()
     model = cfg.get("model", "gemini-2.0-flash")
     top_n = cfg.get("top_n", 5)

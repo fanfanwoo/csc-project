@@ -97,8 +97,7 @@ def test_pipeline_end_to_end(mock_gemini_client, tmp_path):
 
     with (
         patch("csc.connectors.rss_connector._fetch_with_retry", return_value=SAMPLE_RSS_XML),
-        patch("csc.pipeline.classify.genai.Client", return_value=mock_gemini_client),
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_gemini_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_gemini_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         raw = fetch_all_sources(cfg["sources"])

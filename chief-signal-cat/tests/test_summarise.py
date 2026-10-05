@@ -49,7 +49,7 @@ def test_summarise_returns_brief():
     mock_client = MagicMock()
     mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     with (
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         brief = summarise([_scored()], CFG)
@@ -64,7 +64,7 @@ def test_summarise_limits_to_top_n():
     mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     items = [_scored(str(i)) for i in range(10)]
     with (
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         brief = summarise(items, CFG)
@@ -90,7 +90,7 @@ def test_summarise_appends_review_queue_section():
     mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     held = [_held()]
     with (
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         brief = summarise([_scored()], CFG, review_queue=held)
@@ -105,7 +105,7 @@ def test_summarise_no_review_queue_section_when_empty():
     mock_client = MagicMock()
     mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     with (
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         brief = summarise([_scored()], CFG)
@@ -132,7 +132,7 @@ def test_summarise_appends_source_health_below_the_model_output():
     mock_client = MagicMock()
     mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     with (
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         brief = summarise([_scored()], CFG, source_health=health)
@@ -149,7 +149,7 @@ def test_summarise_without_source_health_omits_the_section():
     mock_client = MagicMock()
     mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     with (
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         brief = summarise([_scored()], CFG)
@@ -162,7 +162,7 @@ def test_summarise_labels_the_date_in_the_report_timezone():
     mock_client = MagicMock()
     mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     with (
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         brief = summarise([_scored()], CFG, report_timezone=ZoneInfo("Australia/Sydney"))
@@ -176,7 +176,7 @@ def test_summarise_defaults_to_utc_dates():
     mock_client = MagicMock()
     mock_client.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
     with (
-        patch("csc.pipeline.summarise.genai.Client", return_value=mock_client),
+        patch("csc.utils.tracing.genai.Client", return_value=mock_client),
         patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
     ):
         brief = summarise([_scored()], CFG)
