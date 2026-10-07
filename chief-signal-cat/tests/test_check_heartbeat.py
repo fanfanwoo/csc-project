@@ -3,6 +3,7 @@ Tests for csc.tools.check_heartbeat — stale/fresh detection and alert dispatch
 Brief files are created under tmp_path with explicit mtimes; SMTP is mocked.
 """
 import os
+import re
 import subprocess
 import sys
 import time
@@ -102,6 +103,22 @@ def test_main_stale_returns_1_and_alerts(stale_briefs):
     mock_alert.assert_called_once()
     status = mock_alert.call_args.args[0]
     assert status.startswith("STALE") and "b.md" in status
+
+
+def test_main_default_alerts_on_single_missed_run(briefs_dir):
+    """Yesterday's 07:00 brief is ~29h old at today's 12:00 check — one missed run must alert."""
+    _touch(briefs_dir / "yesterday.md", hours_ago=29)
+    with patch("csc.tools.check_heartbeat.send_alert") as mock_alert:
+        rc = main(["--briefs-dir", str(briefs_dir)])
+    assert rc == 1
+    mock_alert.assert_called_once()
+
+
+def test_main_prints_timestamped_status(fresh_briefs, capsys):
+    with patch("csc.tools.check_heartbeat.send_alert"):
+        main(["--briefs-dir", str(fresh_briefs)])
+    line = capsys.readouterr().out.strip()
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4} OK: newest brief new\.md .*", line)
 
 
 def test_main_no_email_flag_suppresses_alert(stale_briefs):
@@ -210,4 +227,4 @@ def test_runs_under_system_python(fresh_briefs):
         cwd=ROOT, capture_output=True, text=True,
     )
     assert out.returncode == 0, out.stderr
-    assert out.stdout.startswith("OK: newest brief new.md")
+    assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4} OK: newest brief new\.md", out.stdout)

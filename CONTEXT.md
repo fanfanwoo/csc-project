@@ -5,7 +5,7 @@ system **as it currently is** — keep it current. History lives elsewhere: deci
 `docs/adr/`, design intent in `docs/architectures/`, session logs in the session
 summaries. When this doc and the code disagree, the **code wins** — fix this doc.
 
-_Last updated: 2026-09-27 (scheduler fix, heartbeat, test-data guard)._
+_Last updated: 2026-10-07 (heartbeat window 24h, timestamped log lines)._
 
 ## What CSC is
 
@@ -113,7 +113,7 @@ Full rationale in `docs/adr/0001…`, `docs/adr/0002…`.
 
 - **Run metrics** — each run writes `RunLog.metrics` (`csc/pipeline/run_metrics.py`): publisher_fetched/dropped_filter, enrich success/failed/excerpt, held_headline_only_high_impact, official_released, dedup_publisher_over_aggregator. Read newest-first with `python3 -m csc.tools.run_metrics_report`.
 - **Corroboration trigger** — `python3 -m csc.tools.review_recurrence` clusters held single-source signals by **exact URL** (never fuzzy title) and flags non-official recurrences. Recurrence is counted in **distinct calendar days** (local date of `fetched_at`), with run count shown alongside — same-day re-runs don't inflate it. Trigger = on-domain non-official signal recurring across days (`--min-days`, default 2).
-- **Heartbeat** — `python3 -m csc.tools.check_heartbeat` exits 1 and emails `email.alert_address` when no file in `data/briefs/` is newer than 36h. Independent of the pipeline — stdlib-only, run by `/usr/bin/python3` in launchd — so it catches import-time crashes the scheduler's own alert can't.
+- **Heartbeat** — `python3 -m csc.tools.check_heartbeat` exits 1 and emails `email.alert_address` when no file in `data/briefs/` is newer than 24h. Each line in `logs/csc.heartbeat.log` starts with a local timestamp. Independent of the pipeline — stdlib-only, run by `/usr/bin/python3` in launchd — so it catches import-time crashes the scheduler's own alert can't.
 
 ## Scheduling
 
@@ -126,7 +126,7 @@ Daily activation via macOS launchd: `deploy/launchd/` has two plist templates +
 | Agent | When | Interpreter | Does |
 |---|---|---|---|
 | `com.chiefsignalcat.daily` | 07:00 local | `chief-signal-cat/.venv/bin/python` | full pipeline; daily Gemini cost + email; laptop must be awake |
-| `com.chiefsignalcat.heartbeat` | 12:00 local | `/usr/bin/python3` | `csc.tools.check_heartbeat`: alert if no brief newer than 36h |
+| `com.chiefsignalcat.heartbeat` | 12:00 local | `/usr/bin/python3` | `csc.tools.check_heartbeat`: alert if no brief newer than 24h |
 
 Check with `launchctl print gui/$(id -u)/com.chiefsignalcat.daily` — a growing `runs`
 count with `last exit code = 1` means it fires but fails; read `logs/csc.scheduler.log`.
@@ -155,8 +155,19 @@ instead, so it catches import crashes, a job launchd never starts, or a laptop t
 slept through the week. It is deliberately **stdlib-only** (no PyYAML/pydantic: it reads
 `config/email.yaml` scalars and `.env` itself, sends over `smtplib`) and runs on
 `/usr/bin/python3` (override `CSC_HEARTBEAT_PYTHON`), so a broken venv can't take the
-alert down with the pipeline. SMTP only (SendGrid isn't implemented anywhere). With a
-36h window and a noon check, the first alert fires the day *after* a missed 07:00 run.
+alert down with the pipeline. SMTP only (SendGrid isn't implemented anywhere).
+
+**Heartbeat window — 24h.** Was 36h (no recorded reason); with a noon check that
+alerted only the day *after* a missed 07:00 run, so the single missed days on
+2026-10-01 and 2026-10-06 (DNS down at run time; the scheduler's own alert couldn't
+send either) were reported OK at ~29h. At 24h, a missed 07:00 run alerts at 12:00 the
+same day; normal and late runs seen so far are 3–5h old at noon.
+- **Blind spot:** a missed day is *not* caught that noon if the previous brief was made
+  after 12:00 the day before (e.g. a manual afternoon run): it is still under 24h old.
+  The next day's check catches it.
+- A run still retrying at 12:00 alerts even if it succeeds later — intended, the brief is late.
+- If the Mac sleeps through 12:00, launchd runs the check on wake; a normal brief stays
+  OK until about 07:00 the next day.
 
 ## What's next
 
