@@ -34,7 +34,7 @@ def run_once() -> None:
     """
     for attempt in range(1, 3):
         try:
-            run_pipeline()
+            run_pipeline(trigger="scheduled", attempt=attempt)
             logger.info("run_once succeeded", extra={"attempt": attempt})
             return
         except Exception as exc:

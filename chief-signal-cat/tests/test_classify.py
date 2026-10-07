@@ -172,7 +172,7 @@ def test_duplicate_context_in_prompt():
     )
     captured = {}
 
-    def capture(sys_p, user_p, model):
+    def capture(sys_p, user_p, model, trace_metadata=None):
         captured["prompt"] = user_p
         return json.dumps(MOCK_LLM_RESPONSE)
 
@@ -187,7 +187,7 @@ def test_matched_keywords_in_prompt():
     item = _filtered_item(matched_keywords=["car loan", "ASIC"])
     captured = {}
 
-    def capture(sys_p, user_p, model):
+    def capture(sys_p, user_p, model, trace_metadata=None):
         captured["prompt"] = user_p
         return json.dumps(MOCK_LLM_RESPONSE)
 
@@ -202,7 +202,7 @@ def test_single_source_shows_no_duplicates_in_prompt():
     item = _filtered_item(duplicate_count=0)
     captured = {}
 
-    def capture(sys_p, user_p, model):
+    def capture(sys_p, user_p, model, trace_metadata=None):
         captured["prompt"] = user_p
         return json.dumps(MOCK_LLM_RESPONSE)
 
@@ -222,7 +222,7 @@ def test_excluded_fields_not_in_prompt():
     )
     captured = {}
 
-    def capture(sys_p, user_p, model):
+    def capture(sys_p, user_p, model, trace_metadata=None):
         captured["prompt"] = user_p
         return json.dumps(MOCK_LLM_RESPONSE)
 
@@ -256,3 +256,20 @@ def test_wildly_out_of_range_score_returns_failure():
         classified, failures = classify_items([_filtered_item()], CFG)
     assert len(failures) == 1
     assert failures[0].error_type == "schema_validation_error"
+
+
+def test_classify_traces_each_call_with_source_and_item():
+    item = _filtered_item()
+    with patch("csc.pipeline.classify._call_llm", return_value=json.dumps(MOCK_LLM_RESPONSE)) as llm:
+        classify_items([item], CFG)
+    assert llm.call_args.args[3] == {"source": item.source_name, "item_id": item.id, "title": item.title}
+
+
+def test_call_llm_names_the_trace_csc_classify(monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    meta = {"source": "s", "item_id": "i", "title": "t"}
+    with patch("csc.pipeline.classify.gemini_client") as client:
+        client.return_value.models.generate_content.return_value.text = "{}"
+        from csc.pipeline.classify import _call_llm
+        _call_llm("sys", "user", "m", meta)
+    client.assert_called_once_with("test-key", name="csc.classify", metadata=meta)

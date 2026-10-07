@@ -20,13 +20,31 @@ from csc.schemas.runs import RunLog
 from csc.storage.jsonl_store import append_decisions, append_items, append_run_log, save_brief
 from csc.utils.logging import get_logger
 from csc.utils.report_tz import report_tz
-from csc.utils.tracing import flush_traces
+from csc.utils.tracing import flush_traces, pipeline_trace
 
 logger = get_logger(__name__)
 
 
-def run_pipeline(dry_run: bool = False) -> RunLog:
+def run_pipeline(dry_run: bool = False, *, trigger: str = "manual", attempt: int | None = None) -> RunLog:
+    """One pipeline attempt, traced as a `csc.run` parent when LangSmith tracing is on.
+
+    trigger: "scheduled" (csc.pipeline.scheduler) or "manual". attempt: the
+    scheduler's attempt number; None for manual runs.
+    """
     run_id = str(uuid.uuid4())
+    metadata = {
+        "run_id": run_id,
+        "run_date": datetime.now().astimezone().date().isoformat(),
+        "trigger": trigger,
+        "dry_run": dry_run,
+    }
+    if attempt is not None:
+        metadata["attempt"] = attempt
+    with pipeline_trace(metadata):
+        return _run_pipeline(run_id, dry_run)
+
+
+def _run_pipeline(run_id: str, dry_run: bool) -> RunLog:
     started_at = datetime.utcnow()
     log = RunLog(run_id=run_id, started_at=started_at, status="started")
     logger.info("pipeline started", extra={"run_id": run_id})
