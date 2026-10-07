@@ -6,7 +6,9 @@ retry. A crash at import time (wrong interpreter, broken wheel) or a job launchd
 never starts produces no alert at all — 85 days went silent that way from
 2026-07-04. This check is independent of the pipeline: it only looks at the
 newest file mtime in data/briefs/ and emails the configured alert_address if
-nothing is newer than --max-age-hours (default 36).
+nothing is newer than --max-age-hours (default 24, so a single missed 07:00 run
+alerts at the 12:00 check the same day). Each status line printed to stdout (the
+launchd log) starts with a local timestamp.
 
 **Stdlib-only, Python 3.9+.** launchd runs it with /usr/bin/python3 so it keeps
 working when the project venv or its wheels are broken — exactly when it's needed.
@@ -35,7 +37,7 @@ _ROOT = Path(__file__).resolve().parent.parent.parent      # chief-signal-cat/
 EMAIL_YAML = _ROOT / "config" / "email.yaml"
 ENV_FILE = _ROOT / ".env"
 
-DEFAULT_MAX_AGE_HOURS = 36.0
+DEFAULT_MAX_AGE_HOURS = 24.0
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -159,7 +161,7 @@ def send_alert(status: str, briefs_dir: Path) -> None:
         "  launchctl print gui/$(id -u)/com.chiefsignalcat.daily\n"
         "  tail -50 logs/csc.scheduler.log\n"
     )
-    _send_smtp("[CSC ALERT] No brief in the last day and a half", body, [alert_address], email_cfg)
+    _send_smtp("[CSC ALERT] Heartbeat: no recent brief", body, [alert_address], email_cfg)
     logger.info("heartbeat alert sent to %s", alert_address)
 
 
@@ -173,7 +175,7 @@ def main(argv=None) -> int:
     briefs_dir = Path(args.briefs_dir)
     fresh, newest, age_hours = check(briefs_dir, args.max_age_hours)
     status = format_status(fresh, newest, age_hours, args.max_age_hours)
-    print(status)
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S %z')} {status}")
     if fresh:
         return 0
     if not args.no_email:
