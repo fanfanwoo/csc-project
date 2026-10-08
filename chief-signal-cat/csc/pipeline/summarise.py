@@ -26,7 +26,7 @@ def summarise(
 ) -> Brief:
     review_queue = review_queue or []
     source_health = source_health or []
-    client = gemini_client(os.environ["GOOGLE_API_KEY"])
+    client = gemini_client(os.environ["GOOGLE_API_KEY"], name="csc.summarise")
     system_prompt = (_PROMPT_DIR / "summariser_prompt.txt").read_text()
     model = cfg.get("model", "gemini-2.0-flash")
     top_n = cfg.get("top_n", 5)

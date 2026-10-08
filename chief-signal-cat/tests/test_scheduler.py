@@ -29,7 +29,7 @@ def test_run_once_retries_on_first_failure():
     """Pipeline fails first attempt, succeeds second — alert not called."""
     results = [RuntimeError("transient"), None]
 
-    def side_effect():
+    def side_effect(**kwargs):
         r = results.pop(0)
         if isinstance(r, Exception):
             raise r
@@ -39,7 +39,10 @@ def test_run_once_retries_on_first_failure():
         from csc.pipeline.scheduler import run_once
         run_once()
 
-    assert mock_run.call_count == 2
+    assert mock_run.call_args_list == [
+        call(trigger="scheduled", attempt=1),
+        call(trigger="scheduled", attempt=2),
+    ]
     mock_alert.assert_not_called()
 
 

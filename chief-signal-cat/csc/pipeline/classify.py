@@ -50,9 +50,12 @@ def classify_items(
     return classified, failures
 
 
-def _call_llm(system_prompt: str, user_prompt: str, model: str) -> str:
-    """Thin Gemini wrapper. Isolated here so tests can mock it without touching provider internals."""
-    client = gemini_client(os.environ["GOOGLE_API_KEY"])
+def _call_llm(system_prompt: str, user_prompt: str, model: str, trace_metadata: dict | None = None) -> str:
+    """Thin Gemini wrapper. Isolated here so tests can mock it without touching provider internals.
+
+    trace_metadata is attached to the call's `csc.classify` trace when tracing is on.
+    """
+    client = gemini_client(os.environ["GOOGLE_API_KEY"], name="csc.classify", metadata=trace_metadata)
     response = client.models.generate_content(
         model=model,
         contents=user_prompt,
@@ -74,6 +77,7 @@ def _classify_one(
     max_retries: int,
 ) -> ClassifiedItem | ClassificationFailure:
     user_prompt = _build_user_prompt(item, max_body)
+    trace_metadata = {"source": item.source_name, "item_id": item.id, "title": item.title}
     error_type = "api_error"
     error_message = "unknown"
     attempted_at = datetime.now(timezone.utc)
@@ -81,7 +85,7 @@ def _classify_one(
     for attempt in range(max_retries + 1):
         attempted_at = datetime.now(timezone.utc)
         try:
-            raw_json = _call_llm(system_prompt, user_prompt, model)
+            raw_json = _call_llm(system_prompt, user_prompt, model, trace_metadata)
             data = json.loads(raw_json)
         except json.JSONDecodeError as exc:
             error_type, error_message = "json_parse_error", str(exc)

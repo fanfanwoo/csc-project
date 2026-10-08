@@ -182,3 +182,13 @@ def test_summarise_defaults_to_utc_dates():
         brief = summarise([_scored()], CFG)
 
     assert brief.date_range == datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def test_summarise_names_the_trace_csc_summarise():
+    with (
+        patch("csc.pipeline.summarise.gemini_client") as client,
+        patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}),
+    ):
+        client.return_value.models.generate_content.return_value = MagicMock(text=MOCK_BRIEF)
+        summarise([_scored()], CFG)
+    client.assert_called_once_with("test-key", name="csc.summarise")
