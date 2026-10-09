@@ -6,7 +6,12 @@ from csc.config import load_config
 from csc.pipeline.fetch_sources import fetch_all_sources
 from csc.pipeline.filter_items import filter_items
 from csc.pipeline.deduplicate import deduplicate
-from csc.pipeline.decisions import dedupe_decisions, filter_decisions, summarise_decisions
+from csc.pipeline.decisions import (
+    classify_decisions,
+    dedupe_decisions,
+    filter_decisions,
+    summarise_decisions,
+)
 from csc.pipeline.enrich_fetch import enrich
 from csc.pipeline.evidence_state import label_evidence
 from csc.pipeline.classify import classify_items
@@ -23,6 +28,10 @@ from csc.utils.report_tz import report_tz
 from csc.utils.tracing import flush_traces, pipeline_trace
 
 logger = get_logger(__name__)
+
+
+class AllSourcesFailedError(RuntimeError):
+    """No configured source returned any item, so there is nothing to brief."""
 
 
 def run_pipeline(dry_run: bool = False, *, trigger: str = "manual", attempt: int | None = None) -> RunLog:
@@ -59,6 +68,12 @@ def _run_pipeline(run_id: str, dry_run: bool) -> RunLog:
         # nothing must be distinguishable from one whose items were filtered out.
         # Newest-item dates render in the report timezone, like the brief's own.
         health = assess_sources(raw, cfg["sources"], tz=report_tz(cfg))
+        if not raw:
+            # Every source failed or came back empty. Building a brief from nothing
+            # reads as "a quiet day"; failing makes the scheduler retry, then alert.
+            raise AllSourcesFailedError(
+                f"every source fetch failed or came back empty: 0 items from {len(cfg['sources'])} configured sources"
+            )
 
         filtered_all = filter_items(raw, cfg["filter"], cfg["sources"])
         filtered = [i for i in filtered_all if i.filter_status != "dropped"]
@@ -80,6 +95,7 @@ def _run_pipeline(run_id: str, dry_run: bool) -> RunLog:
 
         classified, failures = classify_items(labelled, cfg["classification"])
         log.items_classified = len(classified)
+        append_decisions(run_id, classify_decisions(labelled, classified, failures))
         if failures:
             log.error_count += len(failures)
             log.errors.extend(

@@ -44,7 +44,7 @@ def append_items(run_id: str, stage: str, items: list) -> None:
 
 
 def append_decisions(run_id: str, records: list[dict]) -> None:
-    """Append filter/dedupe decision records. Append-only: never rewrites the file."""
+    """Append per-item decision records. Append-only: never rewrites the file."""
     path = _DATA_DIR / "decisions" / f"{run_id}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a") as f:

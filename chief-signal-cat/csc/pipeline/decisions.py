@@ -8,13 +8,25 @@ data/decisions/{run_id}.jsonl, written at the stage that decided its fate:
   stage "dedupe", decision "dropped", reason "duplicate"   (merged into another item)
   stage "dedupe", decision "kept",    reason "kept"        (passed both stages)
 
-The file answers "why didn't item X reach the brief?" without re-running the
-pipeline. Bodies are never stored — only their length.
+Items kept at dedupe get a second line once classify has run, recording what
+was fetched for them and whether classification succeeded:
+
+  stage "classify", decision "kept",    reason "classified"
+  stage "classify", decision "dropped", reason = the failure's error_type
+                                        (api_error, json_parse_error, ...)
+
+The classify line carries the item's evidence after enrichment: what the enrich
+fetch did (enrichment_status / enrichment_reason), the evidence level classify
+saw, and the body length it had to work with.
+
+The file answers "why didn't item X reach the brief?" and "what evidence did
+classify have?" without re-running the pipeline. Bodies are never stored —
+only their length.
 """
 
 from collections import Counter
 
-from csc.schemas.items import FilteredItem
+from csc.schemas.items import ClassificationFailure, ClassifiedItem, FilteredItem
 
 
 def _record(item: FilteredItem, stage: str, decision: str, reason: str, **extra) -> dict:
@@ -67,8 +79,46 @@ def dedupe_decisions(filtered_kept: list[FilteredItem], survivors: list[Filtered
     return records
 
 
+def classify_decisions(
+    labelled: list[FilteredItem],
+    classified: list[ClassifiedItem],
+    failures: list[ClassificationFailure],
+) -> list[dict]:
+    """Records for every item that entered classify, with its evidence after enrichment.
+
+    Matched by item id: dedupe merges same-URL items, so ids are unique by now.
+    """
+    classified_ids = {c.id for c in classified}
+    failed = {f.item_id: f for f in failures}
+
+    records = []
+    for item in labelled:
+        if item.id in classified_ids:
+            decision, reason, extra = "kept", "classified", {}
+        elif item.id in failed:
+            f = failed[item.id]
+            decision, reason, extra = "dropped", f.error_type, {"error": f.error_message}
+        else:
+            decision, reason, extra = "dropped", "not_classified", {}
+        records.append(
+            _record(
+                item, "classify", decision, reason,
+                enrichment_status=item.enrichment_status,
+                enrichment_reason=item.enrichment_reason,
+                evidence_level=item.evidence_level,
+                evidence_source=item.evidence_source,
+                **extra,
+            )
+        )
+    return records
+
+
 def summarise_decisions(records: list[dict]) -> dict:
-    """Per-source kept/dropped counts by reason, for the run log."""
+    """Per-source kept/dropped counts by reason, for the run log.
+
+    Pass the filter/dedupe records only: classify records are a second line for
+    items already counted as kept at dedupe.
+    """
     summary: dict[str, dict] = {}
     for r in records:
         s = summary.setdefault(r["source"], {"kept": 0, "dropped": 0, "by_reason": {}})

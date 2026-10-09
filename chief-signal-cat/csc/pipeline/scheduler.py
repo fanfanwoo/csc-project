@@ -32,23 +32,28 @@ def run_once() -> None:
     Sends an alert email then exits non-zero after two consecutive failures.
     RunLog is always written — run.py's finally block guarantees it.
     """
+    last_error = None
     for attempt in range(1, 3):
         try:
             run_pipeline(trigger="scheduled", attempt=attempt)
             logger.info("run_once succeeded", extra={"attempt": attempt})
             return
         except Exception as exc:
-            logger.error("pipeline attempt failed", extra={"attempt": attempt, "error": str(exc)})
+            last_error = str(exc)
+            logger.error("pipeline attempt failed", extra={"attempt": attempt, "error": last_error})
             if attempt < 2:
                 logger.info("retrying", extra={"delay_seconds": _RETRY_DELAY})
                 time.sleep(_RETRY_DELAY)
 
-    _send_alert()
+    _send_alert(last_error)
     sys.exit(1)
 
 
-def _send_alert() -> None:
-    """Send a plain-text failure alert via the configured email transport."""
+def _send_alert(reason: str | None = None) -> None:
+    """Send a plain-text failure alert via the configured email transport.
+
+    reason: the last attempt's error, so the alert says why without opening the logs.
+    """
     try:
         cfg = load_config()
         email_cfg = cfg.get("email", {})
@@ -57,7 +62,11 @@ def _send_alert() -> None:
             return
         send_plain_text(
             subject="[CSC ALERT] Pipeline failed after 2 attempts",
-            body="The CSC pipeline failed after 2 consecutive attempts.\nCheck logs for details.",
+            body=(
+                "The CSC pipeline failed after 2 consecutive attempts.\n"
+                + (f"Last error: {reason}\n" if reason else "")
+                + "Check logs for details."
+            ),
             cfg=email_cfg,
         )
         logger.info("alert email sent", extra={"alert_address": email_cfg["alert_address"]})
