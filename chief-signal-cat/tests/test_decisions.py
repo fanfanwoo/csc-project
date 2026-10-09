@@ -12,10 +12,17 @@ import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from csc.pipeline.decisions import dedupe_decisions, filter_decisions, summarise_decisions
+from csc.pipeline.decisions import (
+    classify_decisions,
+    dedupe_decisions,
+    filter_decisions,
+    summarise_decisions,
+)
 from csc.pipeline.deduplicate import deduplicate
 from csc.pipeline.filter_items import filter_items
-from csc.schemas.items import RawItem
+from types import SimpleNamespace
+
+from csc.schemas.items import ClassificationFailure, FilteredItem, RawItem
 from csc.storage import jsonl_store
 
 NOW = datetime.now(timezone.utc)
@@ -153,8 +160,48 @@ def test_run_pipeline_writes_decisions_and_summary(isolate_data_dir):
         log = run_pipeline()
 
     lines = _read(isolate_data_dir, log.run_id)
-    assert sorted(l["reason"] for l in lines) == ["duplicate", "kept", "kept", "no_keyword_match", "stale"]
+    early = [l for l in lines if l["stage"] != "classify"]
+    assert sorted(l["reason"] for l in early) == ["duplicate", "kept", "kept", "no_keyword_match", "stale"]
+    # The two dedupe survivors get a classify line; the mock classified neither.
+    late = [l for l in lines if l["stage"] == "classify"]
+    assert sorted(l["url"].rsplit("/", 1)[1] for l in late) == ["dup-win", "kept"]
+    assert {l["reason"] for l in late} == {"not_classified"}
     assert log.decisions["Google News"]["by_reason"] == {"stale": 1, "no_keyword_match": 1, "duplicate": 1}
 
     run_log = json.loads((isolate_data_dir / "logs" / f"{log.run_id}.jsonl").read_text())
     assert run_log["decisions"] == log.decisions
+
+
+# ── classify stage ────────────────────────────────────────────
+
+def _survivors() -> list[FilteredItem]:
+    filtered_all = filter_items(_fixture(), FILTER_CFG, SOURCES)
+    kept = [i for i in filtered_all if i.filter_status != "dropped"]
+    return deduplicate(kept, DEDUP_CFG)
+
+
+def test_classify_records_carry_outcome_and_evidence():
+    survivors = _survivors()
+    ok, bad = survivors
+    ok.enrichment_status, ok.enrichment_reason = "skipped", None
+    ok.evidence_level, ok.evidence_source = "full_body", "official_page"
+    bad.enrichment_status, bad.enrichment_reason = "failed", "fetch_failed"
+    bad.evidence_level, bad.evidence_source = "headline_only", "publisher_rss"
+    failure = ClassificationFailure(
+        item_id=bad.id, error_type="api_error", error_message="API key not valid",
+        model="m", attempted_at=NOW, retry_count=1,
+    )
+
+    records = classify_decisions(survivors, [SimpleNamespace(id=ok.id)], [failure])
+
+    by_id = {r["item_id"]: r for r in records}
+    assert len(records) == 2
+    assert {k: by_id[ok.id][k] for k in ("stage", "decision", "reason", "evidence_level", "body_length")} == {
+        "stage": "classify", "decision": "kept", "reason": "classified",
+        "evidence_level": "full_body", "body_length": len(ok.body),
+    }
+    assert {k: by_id[bad.id][k] for k in ("decision", "reason", "error", "enrichment_reason", "evidence_level")} == {
+        "decision": "dropped", "reason": "api_error", "error": "API key not valid",
+        "enrichment_reason": "fetch_failed", "evidence_level": "headline_only",
+    }
+    assert all("body" not in r for r in records)

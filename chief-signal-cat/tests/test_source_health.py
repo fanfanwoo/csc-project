@@ -256,7 +256,7 @@ def test_run_pipeline_passes_the_configured_timezone_to_source_health():
     from zoneinfo import ZoneInfo
 
     from csc.config import load_config
-    from csc.run import run_pipeline
+    from csc.run import AllSourcesFailedError, run_pipeline
     from csc.schemas.briefs import Brief
 
     configured = load_config().get("timezone")
@@ -271,9 +271,11 @@ def test_run_pipeline_passes_the_configured_timezone_to_source_health():
         patch("csc.run.assess_sources", return_value=[]) as mock_assess,
         patch("csc.run.summarise", return_value=brief),
         patch("csc.run.send_email"),
+        pytest.raises(AllSourcesFailedError),
     ):
         run_pipeline()
 
+    # Health is assessed before an empty fetch fails the run.
     assert mock_assess.call_args.kwargs["tz"] == ZoneInfo(configured)
 
 
