@@ -19,9 +19,23 @@ The classify line carries the item's evidence after enrichment: what the enrich
 fetch did (enrichment_status / enrichment_reason), the evidence level classify
 saw, and the body length it had to work with.
 
-The file answers "why didn't item X reach the brief?" and "what evidence did
-classify have?" without re-running the pipeline. Bodies are never stored —
-only their length.
+Items that were classified get a third line at the verify gate, recording what
+the gate saw and what it decided:
+
+  stage "verify", decision "kept", reason "passed"   (goes on to score and the brief)
+  stage "verify", decision "held", reason = the review reasons that held it
+                                   (low_confidence, single_source_high_impact, ...)
+
+The verify line carries the gate's inputs (confidence, impact_score,
+duplicate_count, evidence_category, evidence_level) and the model's other
+scores, for passed and held items alike. `review_flags` holds every review
+reason set on the item, including ones that mark without holding
+(sensitive_domain). Before this line existed, only held items kept their scores
+(in data/review/), so a passed item's impact score could not be read back.
+
+The file answers "why didn't item X reach the brief?", "what evidence did
+classify have?" and "what did the gate see?" without re-running the pipeline.
+Bodies are never stored — only their length.
 """
 
 from collections import Counter
@@ -113,11 +127,39 @@ def classify_decisions(
     return records
 
 
+def verify_decisions(passed: list[ClassifiedItem], held: list[ClassifiedItem]) -> list[dict]:
+    """Records for every item the verify gate saw: its inputs, scores and outcome.
+
+    Call after verify_items, which sets human_review_reason on each item.
+    """
+    records = []
+    for decision, items in (("kept", passed), ("held", held)):
+        for item in items:
+            reason = "passed" if decision == "kept" else (item.human_review_reason or "held")
+            records.append(
+                _record(
+                    item, "verify", decision, reason,
+                    review_flags=item.human_review_reason,
+                    confidence=item.confidence,
+                    impact_score=item.impact_score,
+                    relevance_score=item.relevance_score,
+                    novelty_score=item.novelty_score,
+                    urgency_score=item.urgency_score,
+                    duplicate_count=item.duplicate_count,
+                    evidence_category=item.evidence_category,
+                    evidence_level=item.evidence_level,
+                    domain=item.domain,
+                    signal_type=item.signal_type,
+                )
+            )
+    return records
+
+
 def summarise_decisions(records: list[dict]) -> dict:
     """Per-source kept/dropped counts by reason, for the run log.
 
-    Pass the filter/dedupe records only: classify records are a second line for
-    items already counted as kept at dedupe.
+    Pass the filter/dedupe records only: classify and verify records are extra
+    lines for items already counted as kept at dedupe.
     """
     summary: dict[str, dict] = {}
     for r in records:

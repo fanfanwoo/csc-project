@@ -9,6 +9,7 @@ Fixture: five items, one per outcome —
   kept + duplicate two sources, same story; the official one wins the merge
 """
 import json
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -17,12 +18,14 @@ from csc.pipeline.decisions import (
     dedupe_decisions,
     filter_decisions,
     summarise_decisions,
+    verify_decisions,
 )
 from csc.pipeline.deduplicate import deduplicate
 from csc.pipeline.filter_items import filter_items
 from types import SimpleNamespace
 
-from csc.schemas.items import ClassificationFailure, FilteredItem, RawItem
+from csc.pipeline.verify import verify_items
+from csc.schemas.items import ClassificationFailure, ClassifiedItem, FilteredItem, RawItem
 from csc.storage import jsonl_store
 
 NOW = datetime.now(timezone.utc)
@@ -205,3 +208,74 @@ def test_classify_records_carry_outcome_and_evidence():
         "enrichment_reason": "fetch_failed", "evidence_level": "headline_only",
     }
     assert all("body" not in r for r in records)
+
+
+# ── verify stage ──────────────────────────────────────────────
+
+def _classified(item: FilteredItem, *, impact: float, confidence: float = 0.8, **over) -> ClassifiedItem:
+    fields = {**asdict(item), "impact_score": impact, "confidence": confidence, "rationale": "Rates moved.", **over}
+    return ClassifiedItem(**fields)
+
+
+def test_verify_records_carry_gate_inputs_for_passed_and_held():
+    first, second = _survivors()
+    plain = {"title": "Bank changes its fixed rates", "duplicate_count": 0, "evidence_level": "full_body"}
+    held_one = _classified(first, impact=0.8, evidence_category="publisher", id="on-the-line", **plain)
+    passed_one = _classified(first, impact=0.7, evidence_category="publisher", id="below-line", **plain)
+    flagged = _classified(
+        second, impact=0.9, evidence_category="official", id="official",
+        **{**plain, "title": "Regulator acts"}, rationale="A regulatory change.",
+    )
+
+    passed, held = verify_items([held_one, passed_one, flagged], confidence_floor=0.5, high_impact_threshold=0.8)
+    records = verify_decisions(passed, held)
+
+    by_id = {r["item_id"]: r for r in records}
+    assert len(records) == 3 and {r["stage"] for r in records} == {"verify"}
+    # Same article, same evidence: only the impact score decides held vs passed.
+    assert {k: by_id["on-the-line"][k] for k in ("decision", "reason", "impact_score", "duplicate_count")} == {
+        "decision": "held", "reason": "single_source_high_impact", "impact_score": 0.8, "duplicate_count": 0,
+    }
+    assert {k: by_id["below-line"][k] for k in ("decision", "reason", "impact_score", "review_flags")} == {
+        "decision": "kept", "reason": "passed", "impact_score": 0.7, "review_flags": None,
+    }
+    # sensitive_domain marks but does not hold: the flag is recorded on a passed line.
+    assert {k: by_id["official"][k] for k in ("decision", "reason", "review_flags", "evidence_category")} == {
+        "decision": "kept", "reason": "passed", "review_flags": "sensitive_domain", "evidence_category": "official",
+    }
+    assert all("body" not in r and "confidence" in r for r in records)
+
+
+def test_run_pipeline_writes_a_verify_line_per_classified_item(isolate_data_dir):
+    from csc.run import run_pipeline
+    from csc.schemas.briefs import Brief
+
+    cfg = {
+        "sources": SOURCES, "filter": FILTER_CFG, "deduplicate": DEDUP_CFG,
+        "classification": {}, "scoring": {}, "summary": {}, "email": {},
+    }
+    brief = Brief(
+        run_id="", date_range="2026-10-05", generated_at=NOW,
+        one_line_readout="readout", markdown_body="# body",
+    )
+
+    def classify(labelled, _cfg):
+        return [_classified(i, impact=0.8 if n == 0 else 0.4, evidence_category="publisher") for n, i in enumerate(labelled)], []
+
+    with (
+        patch("csc.run.load_config", return_value=cfg),
+        patch("csc.run.fetch_all_sources", return_value=_fixture()),
+        patch("csc.run.assess_sources", return_value=[]),
+        patch("csc.run.enrich", side_effect=lambda items, *a: items),
+        patch("csc.run.classify_items", side_effect=classify),
+        patch("csc.run.score_items", return_value=[]),
+        patch("csc.run.summarise", return_value=brief),
+        patch("csc.run.send_email"),
+    ):
+        log = run_pipeline()
+
+    gate = [l for l in _read(isolate_data_dir, log.run_id) if l["stage"] == "verify"]
+    assert sorted((l["decision"], l["impact_score"]) for l in gate) == [("held", 0.8), ("kept", 0.4)]
+    assert log.items_held == 1
+    # The summary in the run log still counts each fetched item once.
+    assert sum(s["kept"] + s["dropped"] for s in log.decisions.values()) == len(_fixture())
