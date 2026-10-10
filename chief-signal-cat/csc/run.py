@@ -11,6 +11,7 @@ from csc.pipeline.decisions import (
     dedupe_decisions,
     filter_decisions,
     summarise_decisions,
+    verify_decisions,
 )
 from csc.pipeline.enrich_fetch import enrich
 from csc.pipeline.evidence_state import label_evidence
@@ -112,6 +113,9 @@ def _run_pipeline(run_id: str, dry_run: bool) -> RunLog:
         high_impact_threshold = cfg.get("verify", {}).get("high_impact_threshold", 0.8)
         passed, held = verify_items(classified, confidence_floor, high_impact_threshold)
         log.items_held = len(held)
+        # What the gate saw for every item, passed or held: scores of passed items
+        # are not stored anywhere else.
+        append_decisions(run_id, verify_decisions(passed, held))
         if held:
             append_items(run_id, "review", held)
             logger.info("review queue persisted", extra={"run_id": run_id, "held": len(held)})
