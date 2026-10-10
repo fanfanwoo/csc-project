@@ -2,11 +2,17 @@ sources:
   # Google News search RSS is relevance-ranked, not date-ranked: without `when:`
   # the top 50 were all >14 days old and dropped as stale (Sep 2026).
   # when:14d matches filter.max_age_days.
+  # Query: ("car loan" OR "vehicle finance" OR "auto lending" OR "buy now pay later"
+  #   OR "novated lease") (australia OR ASX) when:14d
+  # Phrases are quoted and grouped so the AU condition applies to every one;
+  # hl/gl only pick the AU edition, they don't restrict results to AU stories.
+  # The old unquoted query returned 4/18 AU-publisher items; this form 17/38
+  # (Oct 2026). "OR ASX" catches listed-company stories that never say "Australia".
   - name: "Google News AU"
     type: "news"
     trust_tier: "aggregator"
     connector: "rss"
-    url: "https://news.google.com/rss/search?q=car+loan+OR+vehicle+finance+OR+auto+lending+OR+BNPL+car+OR+consumer+credit+australia+when:14d&hl=en-AU&gl=AU&ceid=AU:en"
+    url: "https://news.google.com/rss/search?q=%28%22car+loan%22+OR+%22vehicle+finance%22+OR+%22auto+lending%22+OR+%22buy+now+pay+later%22+OR+%22novated+lease%22%29+%28australia+OR+ASX%29+when%3A14d&hl=en-AU&gl=AU&ceid=AU:en"
     region: "AU"
     source_weight: 0.5
     max_items: 50
